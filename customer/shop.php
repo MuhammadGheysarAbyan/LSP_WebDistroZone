@@ -2,34 +2,48 @@
 session_start();
 require_once '../config/database.php';
 
-$db = new Database();
-$conn = $db->getConnection();
+// Helper functions
+function clean_input($data) {
+    return htmlspecialchars(stripslashes(trim($data)));
+}
 
-// Get filters
+function format_rupiah($angka) {
+    return 'Rp ' . number_format($angka, 0, ',', '.');
+}
+
+// Inisialisasi database
+try {
+    $db = new Database();
+    $conn = $db->getConnection();
+} catch(Exception $e) {
+    die("Koneksi database gagal: " . $e->getMessage());
+}
+
+// Get filters dengan sanitasi
 $search = isset($_GET['search']) ? clean_input($_GET['search']) : '';
-$kategori = isset($_GET['kategori']) ? $_GET['kategori'] : '';
-$size = isset($_GET['size']) ? $_GET['size'] : '';
-$sort = isset($_GET['sort']) ? $_GET['sort'] : 'terbaru';
+$kategori = isset($_GET['kategori']) ? intval($_GET['kategori']) : 0;
+$size = isset($_GET['size']) ? clean_input($_GET['size']) : '';
+$sort = isset($_GET['sort']) ? clean_input($_GET['sort']) : 'terbaru';
 
-// Build query
+// Query untuk produk
 $query = "SELECT k.*, kat.nama_kategori 
-          FROM kaos k 
-          LEFT JOIN kategori kat ON k.kategori_id = kat.id 
+          FROM KAOS k 
+          LEFT JOIN KATEGORI kat ON k.kategori_id = kat.id 
           WHERE k.stok > 0";
 
 $params = [];
 
-if ($search) {
+if (!empty($search)) {
     $query .= " AND (k.nama_kaos LIKE :search OR k.merek LIKE :search)";
-    $params[':search'] = "%$search%";
+    $params[':search'] = "%{$search}%";
 }
 
-if ($kategori) {
+if ($kategori > 0) {
     $query .= " AND k.kategori_id = :kategori";
     $params[':kategori'] = $kategori;
 }
 
-if ($size) {
+if (!empty($size)) {
     $query .= " AND k.size = :size";
     $params[':size'] = $size;
 }
@@ -49,26 +63,35 @@ switch($sort) {
         $query .= " ORDER BY k.created_at DESC";
 }
 
-$stmt = $conn->prepare($query);
-$stmt->execute($params);
-$products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+try {
+    $stmt = $conn->prepare($query);
+    $stmt->execute($params);
+    $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch(PDOException $e) {
+    $products = [];
+}
 
-// Get categories for filter
-$query_kat = "SELECT * FROM kategori ORDER BY nama_kategori";
-$stmt_kat = $conn->query($query_kat);
-$categories = $stmt_kat->fetchAll(PDO::FETCH_ASSOC);
+// Get categories
+try {
+    $stmt_kat = $conn->query("SELECT * FROM KATEGORI ORDER BY nama_kategori");
+    $categories = $stmt_kat->fetchAll(PDO::FETCH_ASSOC);
+} catch(PDOException $e) {
+    $categories = [];
+}
 
-// Get cart count if logged in
+// Get cart count
 $cart_count = 0;
 if (isset($_SESSION['user_id'])) {
-    $query_cart = "SELECT SUM(qty) as total FROM cart WHERE customer_id = :customer_id";
-    $stmt_cart = $conn->prepare($query_cart);
-    $stmt_cart->execute([':customer_id' => $_SESSION['user_id']]);
-    $cart_result = $stmt_cart->fetch(PDO::FETCH_ASSOC);
-    $cart_count = $cart_result['total'] ?? 0;
+    try {
+        $stmt_cart = $conn->prepare("SELECT SUM(qty) as total FROM CART WHERE customer_id = :customer_id");
+        $stmt_cart->execute([':customer_id' => $_SESSION['user_id']]);
+        $cart_result = $stmt_cart->fetch(PDO::FETCH_ASSOC);
+        $cart_count = $cart_result['total'] ?? 0;
+    } catch(PDOException $e) {
+        // Error silent
+    }
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -90,7 +113,7 @@ if (isset($_SESSION['user_id'])) {
             color: #334155;
         }
         
-        /* Navbar */
+        /* Navbar - TANPA MENU HAMBURGER */
         .navbar {
             background: white;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
@@ -115,11 +138,13 @@ if (isset($_SESSION['user_id'])) {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+            text-decoration: none;
+            display: inline-block;
         }
         
         .nav-links {
             display: flex;
-            gap: 24px;
+            gap: 32px;
             align-items: center;
         }
         
@@ -128,14 +153,22 @@ if (isset($_SESSION['user_id'])) {
             color: #334155;
             font-weight: 500;
             transition: color 0.3s;
+            padding: 8px 0;
+            font-size: 15px;
         }
         
         .nav-links a:hover {
             color: #667eea;
         }
         
+        .nav-links a.active {
+            color: #667eea;
+            font-weight: 600;
+        }
+        
         .cart-icon {
             position: relative;
+            text-decoration: none;
         }
         
         .cart-badge {
@@ -159,6 +192,7 @@ if (isset($_SESSION['user_id'])) {
             max-width: 1400px;
             margin: 0 auto;
             padding: 32px 24px;
+            min-height: calc(100vh - 80px);
         }
         
         .shop-layout {
@@ -197,6 +231,7 @@ if (isset($_SESSION['user_id'])) {
             display: flex;
             align-items: center;
             gap: 8px;
+            text-decoration: none;
         }
         
         .filter-option:hover {
@@ -209,10 +244,6 @@ if (isset($_SESSION['user_id'])) {
         }
         
         /* Products Area */
-        .products-area {
-            
-        }
-        
         .shop-header {
             background: white;
             border-radius: 16px;
@@ -226,6 +257,7 @@ if (isset($_SESSION['user_id'])) {
         
         .results-count {
             color: #64748B;
+            font-size: 15px;
         }
         
         .sort-select {
@@ -234,6 +266,8 @@ if (isset($_SESSION['user_id'])) {
             border-radius: 10px;
             font-size: 14px;
             background: white;
+            cursor: pointer;
+            color: #334155;
         }
         
         .search-bar {
@@ -244,6 +278,12 @@ if (isset($_SESSION['user_id'])) {
             font-size: 15px;
             margin-bottom: 20px;
             background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="%2364748B" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>') no-repeat 16px center;
+            transition: border-color 0.3s;
+        }
+        
+        .search-bar:focus {
+            outline: none;
+            border-color: #667eea;
         }
         
         .products-grid {
@@ -258,19 +298,19 @@ if (isset($_SESSION['user_id'])) {
             overflow: hidden;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
             transition: all 0.3s;
-            cursor: pointer;
         }
         
         .product-card:hover {
             transform: translateY(-8px);
-            box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+            box-shadow: 0 20px 40px rgba(102, 126, 234, 0.15);
         }
         
         .product-image {
             width: 100%;
             height: 280px;
-            object-fit: cover;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background-size: cover;
+            background-position: center;
+            background-color: #f1f5f9;
         }
         
         .product-info {
@@ -291,6 +331,7 @@ if (isset($_SESSION['user_id'])) {
             font-weight: 600;
             color: #1E293B;
             margin-bottom: 8px;
+            line-height: 1.3;
         }
         
         .product-meta {
@@ -324,6 +365,7 @@ if (isset($_SESSION['user_id'])) {
             display: flex;
             align-items: center;
             gap: 8px;
+            font-size: 14px;
         }
         
         .btn-add-cart:hover {
@@ -331,11 +373,20 @@ if (isset($_SESSION['user_id'])) {
             box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
         }
         
+        .btn-add-cart:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+            background: #CBD5E1;
+        }
+        
         .empty-state {
             text-align: center;
             padding: 80px 20px;
             background: white;
             border-radius: 16px;
+            grid-column: 1 / -1;
         }
         
         .empty-state i {
@@ -344,6 +395,77 @@ if (isset($_SESSION['user_id'])) {
             margin-bottom: 20px;
         }
         
+        .empty-state h3 {
+            margin-bottom: 12px;
+            color: #1E293B;
+        }
+        
+        .empty-state p {
+            color: #64748B;
+            margin-bottom: 24px;
+        }
+        
+        .stok-info {
+            font-size: 13px;
+            color: #64748B;
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .stok-info .tersedia {
+            color: #10B981;
+            font-weight: 600;
+        }
+        
+        .stok-info .habis {
+            color: #EF4444;
+            font-weight: 600;
+        }
+        
+        .size-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            background: #E2E8F0;
+            color: #64748B;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        
+        .filter-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+        
+        .filter-btn {
+            padding: 6px 12px;
+            background: #F1F5F9;
+            border: none;
+            border-radius: 8px;
+            color: #64748B;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .filter-btn:hover {
+            background: #E2E8F0;
+            text-decoration: none;
+        }
+        
+        .filter-btn.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        /* Responsive - TANPA MENU HAMBURGER */
         @media (max-width: 1024px) {
             .shop-layout {
                 grid-template-columns: 1fr;
@@ -353,17 +475,80 @@ if (isset($_SESSION['user_id'])) {
                 position: relative;
                 top: 0;
             }
+            
+            .nav-links {
+                gap: 20px;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .products-grid {
+                grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            }
+            
+            .navbar-content {
+                padding: 0 16px;
+                flex-direction: column;
+                gap: 16px;
+            }
+            
+            .nav-links {
+                width: 100%;
+                justify-content: center;
+                flex-wrap: wrap;
+                gap: 16px;
+            }
+            
+            .container {
+                padding: 24px 16px;
+            }
+            
+            .shop-header {
+                flex-direction: column;
+                gap: 16px;
+                align-items: stretch;
+            }
+            
+            .sort-select {
+                width: 100%;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .products-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .product-footer {
+                flex-direction: column;
+                gap: 12px;
+                align-items: stretch;
+            }
+            
+            .btn-add-cart {
+                width: 100%;
+                justify-content: center;
+            }
+            
+            .nav-links {
+                font-size: 14px;
+                gap: 12px;
+            }
+            
+            .nav-links a {
+                font-size: 14px;
+            }
         }
     </style>
 </head>
 <body>
-    <!-- Navbar -->
+    <!-- Navbar - TANPA MENU HAMBURGER -->
     <nav class="navbar">
         <div class="navbar-content">
             <a href="index.php" class="logo">DistroZone</a>
             <div class="nav-links">
                 <a href="index.php">Home</a>
-                <a href="shop.php">Shop</a>
+                <a href="shop.php" class="active">Shop</a>
                 <?php if(isset($_SESSION['user_id'])): ?>
                     <a href="orders.php">Pesanan</a>
                     <a href="cart.php" class="cart-icon">
@@ -375,6 +560,7 @@ if (isset($_SESSION['user_id'])) {
                     <a href="../auth/logout.php">Logout</a>
                 <?php else: ?>
                     <a href="../auth/login.php">Login</a>
+                    <a href="../auth/register.php">Register</a>
                 <?php endif; ?>
             </div>
         </div>
@@ -387,27 +573,40 @@ if (isset($_SESSION['user_id'])) {
             <aside class="filters-sidebar">
                 <div class="filter-section">
                     <h3 class="filter-title">Kategori</h3>
-                    <a href="shop.php" class="filter-option <?php echo empty($kategori) ? 'active' : ''; ?>">
+                    <a href="shop.php" class="filter-option <?php echo $kategori == 0 ? 'active' : ''; ?>">
                         <i class="fas fa-layer-group"></i> Semua Kategori
                     </a>
                     <?php foreach($categories as $kat): ?>
-                        <a href="?kategori=<?php echo $kat['id']; ?>" 
+                        <a href="?kategori=<?php echo $kat['id']; ?><?php echo !empty($size) ? '&size='.$size : ''; ?><?php echo !empty($search) ? '&search='.urlencode($search) : ''; ?>" 
                            class="filter-option <?php echo $kategori == $kat['id'] ? 'active' : ''; ?>">
-                            <i class="fas fa-tag"></i> <?php echo $kat['nama_kategori']; ?>
+                            <i class="fas fa-tag"></i> <?php echo htmlspecialchars($kat['nama_kategori']); ?>
                         </a>
                     <?php endforeach; ?>
                 </div>
                 
                 <div class="filter-section">
                     <h3 class="filter-title">Size</h3>
-                    <?php 
-                    $sizes = ['S', 'M', 'L', 'XL', 'XXL'];
-                    foreach($sizes as $s): ?>
-                        <a href="?size=<?php echo $s; ?><?php echo $kategori ? '&kategori='.$kategori : ''; ?>" 
-                           class="filter-option <?php echo $size == $s ? 'active' : ''; ?>">
-                            <i class="fas fa-ruler"></i> Size <?php echo $s; ?>
+                    <div class="filter-buttons">
+                        <a href="shop.php<?php echo $kategori > 0 ? '?kategori='.$kategori : ''; ?><?php echo !empty($search) ? (($kategori > 0 ? '&' : '?').'search='.urlencode($search)) : ''; ?>" 
+                           class="filter-btn <?php echo empty($size) ? 'active' : ''; ?>">
+                            Semua
                         </a>
-                    <?php endforeach; ?>
+                        <?php 
+                        $sizes = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'];
+                        foreach($sizes as $s): ?>
+                            <a href="?size=<?php echo $s; ?><?php echo $kategori > 0 ? '&kategori='.$kategori : ''; ?><?php echo !empty($search) ? '&search='.urlencode($search) : ''; ?>" 
+                               class="filter-btn <?php echo $size == $s ? 'active' : ''; ?>">
+                                <?php echo $s; ?>
+                            </a>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+                
+                <div class="filter-section">
+                    <h3 class="filter-title">Reset Filter</h3>
+                    <a href="shop.php" class="btn-add-cart" style="width: 100%; justify-content: center; padding: 12px; text-decoration: none;">
+                        <i class="fas fa-redo"></i> Reset Semua Filter
+                    </a>
                 </div>
             </aside>
             
@@ -415,9 +614,18 @@ if (isset($_SESSION['user_id'])) {
             <div class="products-area">
                 <div class="shop-header">
                     <div class="results-count">
-                        Menampilkan <?php echo count($products); ?> produk
+                        <?php echo count($products); ?> produk ditemukan
                     </div>
-                    <form method="GET" style="display: flex; gap: 12px;">
+                    <form method="GET" style="display: flex; gap: 12px; align-items: center;">
+                        <?php if($kategori > 0): ?>
+                            <input type="hidden" name="kategori" value="<?php echo $kategori; ?>">
+                        <?php endif; ?>
+                        <?php if(!empty($size)): ?>
+                            <input type="hidden" name="size" value="<?php echo $size; ?>">
+                        <?php endif; ?>
+                        <?php if(!empty($search)): ?>
+                            <input type="hidden" name="search" value="<?php echo htmlspecialchars($search); ?>">
+                        <?php endif; ?>
                         <select name="sort" class="sort-select" onchange="this.form.submit()">
                             <option value="terbaru" <?php echo $sort == 'terbaru' ? 'selected' : ''; ?>>Terbaru</option>
                             <option value="termurah" <?php echo $sort == 'termurah' ? 'selected' : ''; ?>>Termurah</option>
@@ -427,33 +635,67 @@ if (isset($_SESSION['user_id'])) {
                     </form>
                 </div>
                 
-                <form method="GET">
+                <form method="GET" id="searchForm">
+                    <?php if($kategori > 0): ?>
+                        <input type="hidden" name="kategori" value="<?php echo $kategori; ?>">
+                    <?php endif; ?>
+                    <?php if(!empty($size)): ?>
+                        <input type="hidden" name="size" value="<?php echo $size; ?>">
+                    <?php endif; ?>
                     <input type="text" name="search" class="search-bar" 
-                           placeholder="Cari produk..." 
-                           value="<?php echo $search; ?>">
+                           placeholder="Cari produk berdasarkan nama atau merek..." 
+                           value="<?php echo htmlspecialchars($search); ?>">
+                    <button type="submit" style="display: none;"></button>
                 </form>
                 
                 <?php if(empty($products)): ?>
                     <div class="empty-state">
                         <i class="fas fa-search"></i>
                         <h3>Produk Tidak Ditemukan</h3>
-                        <p>Coba kata kunci atau filter lain</p>
+                        <p>Tidak ada produk yang sesuai dengan kriteria pencarian Anda</p>
+                        <a href="shop.php" style="display: inline-block; padding: 12px 24px; background: #667eea; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; margin-top: 16px;">
+                            <i class="fas fa-redo"></i> Tampilkan Semua Produk
+                        </a>
                     </div>
                 <?php else: ?>
-                    <div class="products-grid">
-                        <?php foreach($products as $product): ?>
-                        <div class="product-card" onclick="window.location.href='product_detail.php?id=<?php echo $product['id']; ?>'">
-                            <div class="product-image" style="background: url('../assets/uploads/products/<?php echo $product['foto'] ?: 'default.jpg'; ?>') center/cover;"></div>
+                    <div class="products-grid" id="productsGrid">
+                        <?php foreach($products as $product): 
+                            $stok_class = $product['stok'] > 0 ? 'tersedia' : 'habis';
+                            $stok_text = $product['stok'] > 0 ? $product['stok'].' pcs tersedia' : 'Stok habis';
+                        ?>
+                        <div class="product-card">
+                            <div class="product-image" style="background-image: url('../assets/uploads/products/<?php echo !empty($product['foto']) ? htmlspecialchars($product['foto']) : 'default.jpg'; ?>');"></div>
                             <div class="product-info">
-                                <div class="product-category"><?php echo $product['nama_kategori']; ?></div>
-                                <div class="product-name"><?php echo $product['nama_kaos']; ?></div>
+                                <div class="product-category"><?php echo htmlspecialchars($product['nama_kategori']); ?></div>
+                                <div class="product-name"><?php echo htmlspecialchars($product['nama_kaos']); ?></div>
                                 <div class="product-meta">
-                                    <?php echo $product['merek']; ?> | <?php echo $product['warna']; ?> | Size <?php echo $product['size']; ?>
+                                    <div style="margin-bottom: 8px;">
+                                        <span style="color: #667eea; font-weight: 500;">
+                                            <i class="fas fa-tag"></i> <?php echo htmlspecialchars($product['merek']); ?>
+                                        </span>
+                                    </div>
+                                    <div style="margin-bottom: 8px;">
+                                        <span style="color: #64748B;">
+                                            <i class="fas fa-palette"></i> <?php echo htmlspecialchars($product['warna']); ?>
+                                        </span>
+                                        <span class="size-badge">
+                                            <i class="fas fa-ruler"></i> <?php echo htmlspecialchars($product['size']); ?>
+                                        </span>
+                                    </div>
+                                    <div class="stok-info">
+                                        <i class="fas fa-box"></i>
+                                        <span class="<?php echo $stok_class; ?>"><?php echo $stok_text; ?></span>
+                                    </div>
                                 </div>
                                 <div class="product-footer">
                                     <div class="product-price"><?php echo format_rupiah($product['harga']); ?></div>
-                                    <button class="btn-add-cart" onclick="event.stopPropagation(); addToCart(<?php echo $product['id']; ?>)">
-                                        <i class="fas fa-cart-plus"></i> Add
+                                    <button class="btn-add-cart" 
+                                            onclick="addToCart(<?php echo $product['id']; ?>, this)"
+                                            <?php echo $product['stok'] <= 0 ? 'disabled' : ''; ?>
+                                            data-product-id="<?php echo $product['id']; ?>"
+                                            data-product-name="<?php echo htmlspecialchars($product['nama_kaos']); ?>">
+                                        <i class="fas fa-cart-plus"></i> 
+                                        <?php echo $product['stok'] > 0 ? 'Tambah' : 'Habis'; ?>
                                     </button>
                                 </div>
                             </div>
@@ -466,33 +708,157 @@ if (isset($_SESSION['user_id'])) {
     </div>
     
     <script>
-        function addToCart(productId) {
+        // Add to Cart Function
+        async function addToCart(productId, button) {
             <?php if(!isset($_SESSION['user_id'])): ?>
-                alert('Silakan login terlebih dahulu!');
+                alert('Silakan login terlebih dahulu untuk menambahkan ke keranjang!');
                 window.location.href = '../auth/login.php';
                 return;
             <?php endif; ?>
             
-            fetch('../api/add_to_cart.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    product_id: productId,
-                    qty: 1
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
+            const productName = button.getAttribute('data-product-name');
+            
+            // Disable button and show loading
+            const originalHTML = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            button.disabled = true;
+            
+            try {
+                const formData = new FormData();
+                formData.append('kaos_id', productId);
+                formData.append('qty', 1);
+                
+                const response = await fetch('../api/add_to_cart.php', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
                 if(data.success) {
-                    alert('Produk ditambahkan ke keranjang!');
-                    location.reload();
+                    // Update cart count in navbar
+                    updateCartCount();
+                    
+                    // Show success message
+                    showNotification(`${productName} berhasil ditambahkan ke keranjang!`);
+                    
+                    // Update button state
+                    button.innerHTML = '<i class="fas fa-check"></i> Ditambahkan';
+                    setTimeout(() => {
+                        button.innerHTML = originalHTML;
+                        button.disabled = false;
+                    }, 2000);
+                    
                 } else {
                     alert(data.message);
+                    button.innerHTML = originalHTML;
+                    button.disabled = false;
                 }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Terjadi kesalahan saat menambahkan ke keranjang');
+                button.innerHTML = originalHTML;
+                button.disabled = false;
+            }
+        }
+        
+        // Update cart count in navbar
+        function updateCartCount() {
+            const cartBadge = document.querySelector('.cart-badge');
+            if (cartBadge) {
+                const currentCount = parseInt(cartBadge.textContent) || 0;
+                cartBadge.textContent = currentCount + 1;
+            } else {
+                // Create badge if doesn't exist
+                const cartIcon = document.querySelector('.cart-icon');
+                if (cartIcon) {
+                    const badge = document.createElement('span');
+                    badge.className = 'cart-badge';
+                    badge.textContent = '1';
+                    cartIcon.appendChild(badge);
+                }
+            }
+        }
+        
+        // Show notification
+        function showNotification(message) {
+            // Remove existing notification
+            const existingNotification = document.querySelector('.custom-notification');
+            if (existingNotification) {
+                existingNotification.remove();
+            }
+            
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.className = 'custom-notification';
+            notification.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                background: #10B981;
+                color: white;
+                padding: 15px 25px;
+                border-radius: 10px;
+                box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+                z-index: 9999;
+                animation: slideIn 0.3s ease;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                max-width: 400px;
+            `;
+            
+            notification.innerHTML = `
+                <i class="fas fa-check-circle" style="font-size: 20px;"></i>
+                <span>${message}</span>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Remove notification after 3 seconds
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 300);
+            }, 3000);
+        }
+        
+        // Add animation styles for notification
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+            @keyframes slideOut {
+                from { transform: translateX(0); opacity: 1; }
+                to { transform: translateX(100%); opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
+        
+        // Search with debounce
+        let searchTimeout;
+        const searchInput = document.querySelector('.search-bar');
+        if (searchInput) {
+            searchInput.addEventListener('input', function(e) {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => {
+                    document.getElementById('searchForm').submit();
+                }, 500);
             });
         }
+        
+        // Auto focus search input
+        document.addEventListener('DOMContentLoaded', function() {
+            if (searchInput && searchInput.value === '') {
+                searchInput.focus();
+            }
+        });
     </script>
 </body>
 </html>
