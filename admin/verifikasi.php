@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once '../config/database.php';
+require_once '../includes/functions.php';
 require_once '../includes/auth_check.php';
 
 check_admin();
@@ -83,10 +84,19 @@ $verified_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Verifikasi Pembayaran - DistroZone</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        /* Same base styles as previous files */
+         :root {
+            --primary: #10B981;
+            --primary-dark: #047857;
+            --secondary: #0F766E;
+            --bg-color: #ECFDF5;
+            --text-dark: #1F2937;
+            --text-light: #64748B;
+            --white: #FFFFFF;
+        }
+        
         * {
             margin: 0;
             padding: 0;
@@ -94,9 +104,15 @@ $verified_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
         }
         
         body {
-            font-family: 'Inter', sans-serif;
-            background: #F8FAFC;
-            color: #334155;
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-color);
+            color: var(--text-dark);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(16, 185, 129, 0.1) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(15, 118, 110, 0.1) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.1) 0px, transparent 50%),
+                radial-gradient(at 0% 100%, rgba(15, 118, 110, 0.1) 0px, transparent 50%);
+            background-attachment: fixed;
         }
         
         .dashboard-container {
@@ -107,108 +123,133 @@ $verified_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
         /* Sidebar */
         .sidebar {
             width: 280px;
-            background: #1E293B;
-            color: white;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(20px);
+            border-right: 1px solid rgba(255, 255, 255, 0.5);
             padding: 24px 0;
             position: fixed;
             height: 100vh;
             overflow-y: auto;
+            z-index: 100;
         }
         
         .logo {
             padding: 0 24px 24px;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
+            border-bottom: 1px solid rgba(16, 185, 129, 0.1);
             margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .logo i {
+            font-size: 24px;
+            color: var(--primary);
         }
         
         .logo h1 {
             font-size: 24px;
             font-weight: 700;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
         
         .nav-menu {
             list-style: none;
+            padding: 0 16px;
         }
         
         .nav-item {
-            margin: 4px 12px;
+            margin-bottom: 8px;
         }
         
         .nav-link {
             display: flex;
             align-items: center;
             padding: 12px 16px;
-            color: rgba(255,255,255,0.7);
+            color: var(--text-light);
             text-decoration: none;
-            border-radius: 10px;
-            transition: all 0.3s;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            font-weight: 500;
         }
         
         .nav-link:hover, .nav-link.active {
-            background: rgba(59, 130, 246, 0.2);
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
             color: white;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
         }
         
         .nav-link i {
             width: 24px;
             margin-right: 12px;
+            font-size: 18px;
         }
         
         /* Main Content */
         .main-content {
             flex: 1;
             margin-left: 280px;
-            padding: 24px;
+            padding: 32px;
         }
         
         .top-bar {
-            background: white;
-            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
             padding: 20px 24px;
-            margin-bottom: 24px;
+            margin-bottom: 32px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+            border: 1px solid rgba(255,255,255,0.5);
         }
         
         .top-bar h2 {
             font-size: 24px;
-            color: #1E293B;
+            font-weight: 700;
+            color: var(--text-dark);
         }
         
         .user-info {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 16px;
         }
         
         .user-avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: #3B82F6;
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
             color: white;
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: 600;
+            font-size: 20px;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
         }
-        
+
         /* Content Card */
         .content-card {
-            background: white;
-            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
             padding: 24px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+            border: 1px solid rgba(255,255,255,0.5);
             margin-bottom: 24px;
         }
         
         .content-card h3 {
-            margin-bottom: 20px;
-            color: #1E293B;
+            margin-bottom: 24px;
+            color: var(--text-dark);
+            font-size: 20px;
         }
-        
+
         /* Badges */
         .badge {
             padding: 6px 12px;
@@ -223,8 +264,8 @@ $verified_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
         }
         
         .badge-success {
-            background: #D1FAE5;
-            color: #059669;
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--primary);
         }
         
         .badge-danger {
@@ -244,14 +285,14 @@ $verified_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
             background: white;
             border-radius: 16px;
             padding: 24px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            border: 1px solid #E2E8F0;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+            border: 1px solid rgba(16, 185, 129, 0.1);
             transition: all 0.3s;
         }
         
         .payment-card:hover {
             transform: translateY(-4px);
-            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            box-shadow: 0 10px 20px rgba(16, 185, 129, 0.1);
         }
         
         .payment-card.pending {
@@ -282,11 +323,12 @@ $verified_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
         .customer-name {
             font-weight: 600;
             margin-bottom: 4px;
+            color: var(--text-dark);
         }
         
         .customer-email {
             font-size: 12px;
-            color: #64748B;
+            color: var(--text-light);
         }
         
         .payment-details {
@@ -301,7 +343,7 @@ $verified_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
         }
         
         .payment-detail .label {
-            color: #64748B;
+            color: var(--text-light);
         }
         
         .payment-detail .value {
@@ -311,7 +353,7 @@ $verified_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
         .payment-amount {
             font-size: 20px;
             font-weight: 700;
-            color: #1E293B;
+            color: var(--text-dark);
         }
         
         .payment-proof {
@@ -349,15 +391,16 @@ $verified_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
             gap: 8px;
             flex: 1;
             justify-content: center;
+            font-family: 'Outfit', sans-serif;
         }
         
         .btn-success {
-            background: #10B981;
+            background: var(--primary);
             color: white;
         }
         
         .btn-success:hover {
-            background: #059669;
+            background: var(--primary-dark);
         }
         
         .btn-danger {
@@ -371,13 +414,26 @@ $verified_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         .btn-secondary {
             background: #F1F5F9;
-            color: #475569;
+            color: var(--text-light);
         }
         
         .btn-secondary:hover {
             background: #E2E8F0;
         }
         
+        .btn-icon {
+            background: rgba(59, 130, 246, 0.1); 
+            color: #3B82F6; 
+            border: none; 
+            width: 36px; 
+            height: 36px; 
+            border-radius: 8px; 
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
         /* Modal for image view */
         .modal {
             display: none;
@@ -422,7 +478,7 @@ $verified_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
         /* Alert */
         .alert {
             padding: 16px 24px;
-            border-radius: 10px;
+            border-radius: 12px;
             margin-bottom: 24px;
             display: flex;
             align-items: center;
@@ -445,14 +501,46 @@ $verified_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
         .empty-state {
             text-align: center;
             padding: 40px;
-            color: #94A3B8;
+            color: var(--text-light);
         }
         
         .empty-state i {
             font-size: 48px;
             margin-bottom: 16px;
             display: block;
+            opacity: 0.5;
         }
+
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+        
+        th {
+            padding: 16px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--text-light);
+            font-size: 14px;
+            border-bottom: 2px solid rgba(16, 185, 129, 0.1);
+        }
+        
+        td {
+            padding: 16px;
+            border-bottom: 1px solid rgba(16, 185, 129, 0.1);
+            vertical-align: middle;
+        }
+        
+        tbody tr {
+            transition: background-color 0.3s;
+        }
+
+        tbody tr:hover {
+            background-color: rgba(16, 185, 129, 0.05);
+        }
+
     </style>
 </head>
 <body>
@@ -460,6 +548,7 @@ $verified_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
         <!-- Sidebar -->
         <aside class="sidebar">
             <div class="logo">
+                <i class="fas fa-layer-group"></i>
                 <h1>DistroZone</h1>
             </div>
             
@@ -519,7 +608,7 @@ $verified_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     </div>
                     <div>
                         <div style="font-weight: 600;"><?php echo $_SESSION['nama']; ?></div>
-                        <div style="font-size: 12px; color: #64748B;">Administrator</div>
+                        <div style="font-size: 12px; color: var(--text-light);">Administrator</div>
                     </div>
                 </div>
             </div>
@@ -549,8 +638,8 @@ $verified_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         <div class="payment-card pending">
                             <div class="payment-header">
                                 <div>
-                                    <div style="font-weight: 600; color: #1E293B;"><?php echo htmlspecialchars($payment['kode_transaksi']); ?></div>
-                                    <div style="font-size: 12px; color: #64748B;">
+                                    <div style="font-weight: 600; color: var(--text-dark);"><?php echo htmlspecialchars($payment['kode_transaksi']); ?></div>
+                                    <div style="font-size: 12px; color: var(--text-light);">
                                         <?php echo date('d M Y, H:i', strtotime($payment['tanggal_upload'])); ?>
                                     </div>
                                 </div>
@@ -575,7 +664,7 @@ $verified_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             
                             <?php if ($payment['file_bukti']): ?>
                             <div class="payment-proof">
-                                <div style="font-size: 12px; color: #64748B; margin-bottom: 8px;">Bukti Pembayaran:</div>
+                                <div style="font-size: 12px; color: var(--text-light); margin-bottom: 8px;">Bukti Pembayaran:</div>
                                 <img src="../<?php echo htmlspecialchars($payment['file_bukti']); ?>" 
                                      alt="Bukti Pembayaran" 
                                      class="proof-image"
@@ -630,7 +719,7 @@ $verified_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     <td><?php echo htmlspecialchars($payment['kode_transaksi']); ?></td>
                                     <td>
                                         <div><?php echo htmlspecialchars($payment['customer_name']); ?></div>
-                                        <div style="font-size: 12px; color: #94A3B8;"><?php echo htmlspecialchars($payment['customer_email']); ?></div>
+                                        <div style="font-size: 12px; color: var(--text-light);"><?php echo htmlspecialchars($payment['customer_email']); ?></div>
                                     </td>
                                     <td><?php echo date('d/m/Y H:i', strtotime($payment['tanggal_upload'])); ?></td>
                                     <td><?php echo format_rupiah($payment['grand_total']); ?></td>
@@ -644,7 +733,7 @@ $verified_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     <td>
                                         <?php if ($payment['verifier_name']): ?>
                                             <?php echo htmlspecialchars($payment['verifier_name']); ?>
-                                            <div style="font-size: 12px; color: #94A3B8;">
+                                            <div style="font-size: 12px; color: var(--text-light);">
                                                 <?php echo date('d/m/Y H:i', strtotime($payment['verified_at'])); ?>
                                             </div>
                                         <?php else: ?>
@@ -653,8 +742,7 @@ $verified_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     </td>
                                     <td>
                                         <?php if ($payment['file_bukti']): ?>
-                                            <button class="btn-icon" onclick="viewImage('../<?php echo htmlspecialchars($payment['file_bukti']); ?>')" 
-                                                    style="background: #DBEAFE; color: #3B82F6; border: none; width: 36px; height: 36px; border-radius: 8px; cursor: pointer;">
+                                            <button class="btn-icon" onclick="viewImage('../<?php echo htmlspecialchars($payment['file_bukti']); ?>')">
                                                 <i class="fas fa-eye"></i>
                                             </button>
                                         <?php endif; ?>
@@ -681,9 +769,9 @@ $verified_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     <!-- Reject Modal -->
     <div id="rejectModal" class="modal">
-        <div class="modal-content" style="max-width: 400px; background: white; border-radius: 16px; padding: 24px;">
+        <div class="modal-content" style="max-width: 400px; background: white; border-radius: 20px; padding: 24px;">
             <h3 style="margin-bottom: 16px;">Tolak Pembayaran</h3>
-            <p style="margin-bottom: 20px; color: #64748B;">Apakah Anda yakin ingin menolak pembayaran ini?</p>
+            <p style="margin-bottom: 20px; color: var(--text-light);">Apakah Anda yakin ingin menolak pembayaran ini?</p>
             <form method="POST" id="rejectForm" style="display: flex; gap: 12px;">
                 <input type="hidden" name="action" value="reject">
                 <input type="hidden" name="payment_id" id="rejectPaymentId">

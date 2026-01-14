@@ -22,9 +22,10 @@ if (!$transaksi) {
 }
 
 // Get transaction items
-$query_items = "SELECT dt.*, k.nama_kaos, k.warna, k.size 
+$query_items = "SELECT dt.*, m.nama_kaos, v.warna, v.size 
                 FROM detail_transaksi dt
-                INNER JOIN kaos k ON dt.kaos_id = k.id
+                INNER JOIN kaos_varian v ON dt.kaos_id = v.id
+                INNER JOIN kaos_master m ON v.kaos_master_id = m.id
                 WHERE dt.transaksi_id = :trx_id";
 $stmt_items = $conn->prepare($query_items);
 $stmt_items->execute([':trx_id' => $transaksi['id']]);

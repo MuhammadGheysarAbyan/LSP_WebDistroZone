@@ -2,6 +2,7 @@
 session_start();
 require_once '../config/database.php';
 require_once '../includes/auth_check.php';
+require_once '../includes/functions.php';
 
 check_customer();
 
@@ -34,7 +35,7 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pesanan Saya - DistroZone</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * {
@@ -43,17 +44,36 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
             box-sizing: border-box;
         }
         
-        body {
-            font-family: 'Inter', sans-serif;
-            background: #F8FAFC;
-            color: #334155;
+        :root {
+            --primary: #10B981; /* Emerald 500 */
+            --secondary: #0F766E; /* Teal 700 */
+            --dark: #1F2937;
         }
         
-        /* Navbar */
-        .navbar {
-            background: white;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            padding: 16px 0;
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #ECFDF5;
+            background-image: 
+                radial-gradient(at 0% 0%, hsla(160,100%,25%,0.05) 0, transparent 50%), 
+                radial-gradient(at 50% 0%, hsla(180,100%,30%,0.05) 0, transparent 50%), 
+                radial-gradient(at 100% 0%, hsla(150,100%,30%,0.05) 0, transparent 50%);
+            background-size: 200% 200%;
+            animation: gradientBG 15s ease infinite;
+            color: #334155;
+            min-height: 100vh;
+        }
+        
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+         .navbar {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            padding: 20px 0;
             position: sticky;
             top: 0;
             z-index: 100;
@@ -70,25 +90,30 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         .logo {
             font-size: 24px;
-            font-weight: 700;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+            text-decoration: none;
         }
         
         .nav-links {
             display: flex;
-            gap: 24px;
+            gap: 32px;
             align-items: center;
         }
         
         .nav-links a {
             text-decoration: none;
-            color: #334155;
+            color: var(--dark);
             font-weight: 500;
+            transition: color 0.3s;
         }
         
-        /* Container */
+        .nav-links a:hover, .nav-links a.active {
+            color: var(--primary);
+        }
+        
         .container {
             max-width: 1200px;
             margin: 40px auto;
@@ -96,144 +121,137 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
         }
         
         .page-header {
-            margin-bottom: 32px;
+            margin-bottom: 40px;
         }
         
         .page-header h1 {
             font-size: 32px;
-            color: #1E293B;
+            font-weight: 800;
+            color: var(--dark);
             margin-bottom: 8px;
         }
         
         .page-header p {
             color: #64748B;
+            font-size: 16px;
         }
         
-        /* Tabs */
         .tabs {
             display: flex;
-            gap: 8px;
-            margin-bottom: 24px;
-            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 30px;
+            overflow-x: auto;
+            padding-bottom: 8px;
         }
         
         .tab-btn {
-            padding: 12px 24px;
-            background: white;
-            border: 2px solid #E2E8F0;
-            border-radius: 10px;
+            white-space: nowrap;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.6);
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255,255,255,0.8);
+            border-radius: 12px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s;
             color: #64748B;
+            font-family: inherit;
+        }
+        
+        .tab-btn:hover {
+            background: white;
+            color: var(--primary);
         }
         
         .tab-btn.active {
-            background: #3B82F6;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
             color: white;
-            border-color: #3B82F6;
+            border: none;
+            box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.3);
         }
         
-        /* Order Cards */
         .order-card {
-            background: white;
-            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
             padding: 24px;
-            margin-bottom: 20px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            transition: all 0.3s;
+            margin-bottom: 24px;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);
+            border: 1px solid rgba(255,255,255,0.6);
+            transition: transform 0.3s;
         }
         
         .order-card:hover {
-            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            transform: translateY(-5px);
+             box-shadow: 0 15px 25px -3px rgba(0,0,0,0.08);
         }
         
         .order-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding-bottom: 16px;
-            border-bottom: 2px solid #F1F5F9;
-            margin-bottom: 16px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #E5E7EB;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 16px;
         }
         
         .order-info h3 {
-            font-size: 18px;
-            color: #1E293B;
+            font-size: 20px;
+            color: var(--dark);
+            font-weight: 700;
             margin-bottom: 4px;
         }
         
         .order-date {
             font-size: 13px;
             color: #64748B;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
         
         .status-badge {
-            padding: 8px 16px;
+            padding: 6px 16px;
             border-radius: 20px;
             font-size: 13px;
-            font-weight: 600;
+            font-weight: 700;
         }
         
-        .status-pending {
-            background: #FEF3C7;
-            color: #D97706;
-        }
-        
-        .status-verified {
-            background: #DBEAFE;
-            color: #1E40AF;
-        }
-        
-        .status-completed {
-            background: #D1FAE5;
-            color: #059669;
-        }
-        
-        .status-cancelled {
-            background: #FEE2E2;
-            color: #DC2626;
-        }
+        .status-pending { background: #FEF3C7; color: #D97706; }
+        .status-verified { background: #DBEAFE; color: #1E40AF; }
+        .status-completed { background: #D1FAE5; color: #059669; }
+        .status-cancelled { background: #FEE2E2; color: #DC2626; }
         
         .order-body {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-        
-        .order-detail {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
+            gap: 30px;
+            margin-bottom: 24px;
         }
         
         .detail-row {
             display: flex;
             justify-content: space-between;
             font-size: 14px;
+            margin-bottom: 8px;
+            color: var(--dark);
         }
         
-        .detail-label {
-            color: #64748B;
-        }
-        
-        .detail-value {
-            font-weight: 600;
-            color: #1E293B;
-        }
+        .detail-label { color: #64748B; }
+        .detail-value { font-weight: 600; }
         
         .order-total {
             font-size: 20px;
-            font-weight: 700;
-            color: #3B82F6;
+            font-weight: 800;
+            color: var(--primary);
         }
         
         .order-actions {
             display: flex;
             gap: 12px;
-            padding-top: 16px;
-            border-top: 2px solid #F1F5F9;
+            flex-wrap: wrap;
         }
         
         .btn {
@@ -248,56 +266,56 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
             align-items: center;
             gap: 8px;
             font-size: 14px;
+            font-family: inherit;
         }
         
         .btn-primary {
-            background: #3B82F6;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
             color: white;
+            box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.3);
         }
         
         .btn-primary:hover {
-            background: #2563EB;
             transform: translateY(-2px);
+            box-shadow: 0 8px 12px -1px rgba(79, 70, 229, 0.4);
         }
         
         .btn-secondary {
-            background: #F1F5F9;
-            color: #334155;
+            background: white;
+            color: var(--dark);
+            border: 1px solid #E5E7EB;
         }
         
         .btn-secondary:hover {
-            background: #E2E8F0;
+            background: #F9FAFB;
+            border-color: #D1D5DB;
         }
         
         .btn-success {
             background: #10B981;
             color: white;
+            box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.3);
+        }
+        
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 12px -1px rgba(16, 185, 129, 0.4);
         }
         
         .empty-state {
             text-align: center;
             padding: 80px 20px;
-            background: white;
-            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 20px;
         }
         
         .empty-state i {
             font-size: 64px;
             color: #CBD5E1;
-            margin-bottom: 20px;
-        }
-        
-        .empty-state h3 {
-            color: #1E293B;
-            margin-bottom: 8px;
-        }
-        
-        .empty-state p {
-            color: #64748B;
             margin-bottom: 24px;
         }
         
-        /* Payment Upload Modal */
+        /* Modal */
         .modal {
             display: none;
             position: fixed;
@@ -309,11 +327,10 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
             z-index: 1000;
             align-items: center;
             justify-content: center;
+            backdrop-filter: blur(5px);
         }
         
-        .modal.active {
-            display: flex;
-        }
+        .modal.active { display: flex; }
         
         .modal-content {
             background: white;
@@ -321,108 +338,92 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
             padding: 32px;
             max-width: 500px;
             width: 90%;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
         }
         
         .modal-header {
-            font-size: 24px;
+            font-size: 20px;
             font-weight: 700;
             margin-bottom: 24px;
-            color: #1E293B;
+            color: var(--dark);
         }
         
-        .form-group {
-            margin-bottom: 20px;
-        }
+        .form-group { margin-bottom: 20px; }
         
         .form-group label {
             display: block;
             margin-bottom: 8px;
             font-weight: 600;
-            color: #334155;
+            color: var(--dark);
         }
         
         .form-group input[type="file"] {
             width: 100%;
-            padding: 12px;
-            border: 2px dashed #E2E8F0;
-            border-radius: 10px;
+            padding: 10px;
+            border: 2px dashed #E5E7EB;
+            border-radius: 12px;
             cursor: pointer;
+            background: #F9FAFB;
         }
         
         .bank-info {
-            background: #F8FAFC;
+            background: #F0F9FF;
             padding: 16px;
             border-radius: 12px;
-            margin-bottom: 20px;
+            margin-bottom: 24px;
+            border: 1px solid #BAE6FD;
+            color: #0369A1;
         }
         
-        .bank-info h4 {
-            margin-bottom: 12px;
-            color: #1E293B;
-        }
-        
-        .bank-info p {
-            margin-bottom: 8px;
-            color: #334155;
-        }
+        .bank-info h4 { margin-bottom: 8px; font-weight: 700; }
+        .bank-info p { margin-bottom: 4px; font-size: 14px; }
         
         @media (max-width: 768px) {
-            .order-body {
-                grid-template-columns: 1fr;
-            }
-            
-            .order-actions {
-                flex-direction: column;
-            }
+            .navbar-content { flex-direction: column; gap: 16px; }
+            .nav-links { flex-wrap: wrap; justify-content: center; gap: 16px; }
+            .order-body { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
-    <!-- Navbar -->
     <nav class="navbar">
         <div class="navbar-content">
             <a href="index.php" class="logo">DistroZone</a>
             <div class="nav-links">
                 <a href="index.php">Home</a>
                 <a href="shop.php">Shop</a>
-                <a href="orders.php" style="color: #667eea;">Pesanan</a>
-                <a href="cart.php"><i class="fas fa-shopping-cart"></i></a>
-                <a href="../auth/logout.php">Logout</a>
+                <a href="orders.php" class="active">Pesanan</a>
+                <a href="cart.php"><i class="fas fa-shopping-bag"></i></a>
+                <?php if(isset($_SESSION['user_id'])): ?>
+                    <a href="../auth/logout.php">Logout</a>
+                <?php else: ?>
+                    <a href="../auth/login.php">Login</a>
+                <?php endif; ?>
             </div>
         </div>
     </nav>
     
-    <!-- Main Content -->
     <div class="container">
         <div class="page-header">
             <h1>Pesanan Saya</h1>
-            <p>Kelola dan lacak status pesanan Anda</p>
+            <p>Lacak status pesanan dan riwayat belanja Anda di sini.</p>
         </div>
         
-        <!-- Tabs Filter -->
         <div class="tabs">
-            <button class="tab-btn active" onclick="filterOrders('all')">
-                Semua Pesanan
-            </button>
-            <button class="tab-btn" onclick="filterOrders('pending')">
-                Menunggu Pembayaran
-            </button>
-            <button class="tab-btn" onclick="filterOrders('verified')">
-                Sedang Diproses
-            </button>
-            <button class="tab-btn" onclick="filterOrders('completed')">
-                Selesai
-            </button>
+            <button class="tab-btn active" onclick="filterOrders('all')">Semua</button>
+            <button class="tab-btn" onclick="filterOrders('pending')">Menunggu Pembayaran</button>
+            <button class="tab-btn" onclick="filterOrders('verified')">Diproses</button>
+             <button class="tab-btn" onclick="filterOrders('completed')">Selesai</button>
+            <button class="tab-btn" onclick="filterOrders('cancelled')">Dibatalkan</button>
         </div>
         
-        <!-- Orders List -->
         <?php if(empty($orders)): ?>
             <div class="empty-state">
                 <i class="fas fa-shopping-bag"></i>
                 <h3>Belum Ada Pesanan</h3>
-                <p>Yuk mulai berbelanja di DistroZone!</p>
+                <p>Keranjang pesananmu masih kosong nih.</p>
                 <a href="shop.php" class="btn btn-primary">
-                    <i class="fas fa-shopping-cart"></i> Mulai Belanja
+                    Mulai Belanja Sekarang
                 </a>
             </div>
         <?php else: ?>
@@ -431,48 +432,46 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 <div class="order-card" data-status="<?php echo $order['status']; ?>">
                     <div class="order-header">
                         <div class="order-info">
-                            <h3><?php echo $order['kode_transaksi']; ?></h3>
+                            <h3><?php echo htmlspecialchars($order['kode_transaksi']); ?></h3>
                             <div class="order-date">
-                                <i class="fas fa-calendar"></i>
-                                <?php echo format_datetime($order['created_at']); ?>
+                                <i class="far fa-calendar-alt"></i>
+                                <?php echo date('d M Y - H:i', strtotime($order['created_at'])); ?>
                             </div>
                         </div>
                         <div class="status-badge status-<?php echo $order['status']; ?>">
-                            <?php echo $order['status_text']; ?>
+                            <?php echo htmlspecialchars($order['status_text']); ?>
                         </div>
                     </div>
                     
                     <div class="order-body">
-                        <div class="order-detail">
+                        <div>
                             <div class="detail-row">
-                                <span class="detail-label">Total Item:</span>
-                                <span class="detail-value"><?php echo $order['total_items']; ?> item</span>
+                                <span class="detail-label">Total Item</span>
+                                <span class="detail-value"><?php echo $order['total_items']; ?> pcs</span>
                             </div>
                             <div class="detail-row">
-                                <span class="detail-label">Metode Pembayaran:</span>
+                                <span class="detail-label">Metode Pembayaran</span>
                                 <span class="detail-value"><?php echo strtoupper($order['payment_method']); ?></span>
                             </div>
                             <?php if($order['shipping_city']): ?>
                             <div class="detail-row">
-                                <span class="detail-label">Pengiriman:</span>
-                                <span class="detail-value"><?php echo $order['shipping_city']; ?></span>
+                                <span class="detail-label">Tujuan Pengiriman</span>
+                                <span class="detail-value"><?php echo htmlspecialchars($order['shipping_city']); ?></span>
                             </div>
                             <?php endif; ?>
                         </div>
                         
-                        <div class="order-detail">
-                            <div class="detail-row">
-                                <span class="detail-label">Subtotal:</span>
+                        <div>
+                             <div class="detail-row">
+                                <span class="detail-label">Subtotal</span>
                                 <span class="detail-value"><?php echo format_rupiah($order['total']); ?></span>
                             </div>
-                            <?php if($order['shipping_cost'] > 0): ?>
                             <div class="detail-row">
-                                <span class="detail-label">Ongkir:</span>
+                                <span class="detail-label">Ongkos Kirim</span>
                                 <span class="detail-value"><?php echo format_rupiah($order['shipping_cost']); ?></span>
                             </div>
-                            <?php endif; ?>
-                            <div class="detail-row">
-                                <span class="detail-label">Total:</span>
+                            <div class="detail-row" style="margin-top: 12px; padding-top: 12px; border-top: 1px dashed #E5E7EB;">
+                                <span class="detail-label" style="font-weight: 600; color: var(--dark);">Total Bayar</span>
                                 <span class="order-total"><?php echo format_rupiah($order['grand_total']); ?></span>
                             </div>
                         </div>
@@ -482,18 +481,18 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         <a href="../includes/print_invoice.php?trx=<?php echo $order['kode_transaksi']; ?>" 
                            target="_blank" 
                            class="btn btn-secondary">
-                            <i class="fas fa-file-invoice"></i> Lihat Invoice
+                            <i class="fas fa-print"></i> Invoice
                         </a>
                         
                         <?php if($order['status'] == 'pending'): ?>
-                            <button class="btn btn-success" onclick="openUploadModal('<?php echo $order['id']; ?>', '<?php echo $order['kode_transaksi']; ?>')">
-                                <i class="fas fa-upload"></i> Upload Bukti Transfer
+                            <button class="btn btn-success" onclick="openUploadModal('<?php echo $order['id']; ?>')">
+                                <i class="fas fa-upload"></i> Upload Bukti Bayar
                             </button>
                         <?php endif; ?>
                         
                         <?php if($order['status'] == 'completed'): ?>
                             <a href="shop.php" class="btn btn-primary">
-                                <i class="fas fa-redo"></i> Pesan Lagi
+                                <i class="fas fa-shopping-cart"></i> Pesan Lagi
                             </a>
                         <?php endif; ?>
                     </div>
@@ -502,34 +501,30 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
             </div>
         <?php endif; ?>
     </div>
-    
-    <!-- Upload Payment Modal -->
+
+    <!-- Upload Modal -->
     <div id="uploadModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">Upload Bukti Transfer</div>
             
             <div class="bank-info">
-                <h4>Informasi Transfer:</h4>
-                <p><strong>Bank:</strong> BCA</p>
-                <p><strong>No. Rekening:</strong> 1234567890</p>
-                <p><strong>Atas Nama:</strong> DistroZone</p>
+                <h4><i class="fas fa-info-circle"></i> Rekening Tujuan</h4>
+                <p><strong>BCA:</strong> 123-456-7890 (DistroZone)</p>
+                <p><strong>Mandiri:</strong> 098-765-4321 (DistroZone)</p>
             </div>
             
             <form method="POST" action="upload_payment.php" enctype="multipart/form-data">
                 <input type="hidden" name="transaksi_id" id="transaksi_id">
                 
                 <div class="form-group">
-                    <label>Upload Bukti Transfer (JPG/PNG)</label>
-                    <input type="file" name="bukti_transfer" accept="image/*" required>
+                    <label>Pilih Foto Bukti Transfer</label>
+                    <input type="file" name="bukti_transfer" accept="image/jpeg,image/png" required>
+                    <small style="color: #64748B; margin-top: 6px; display: block;">Format: JPG, PNG. Max: 2MB</small>
                 </div>
                 
-                <div style="display: flex; gap: 12px;">
-                    <button type="button" class="btn btn-secondary" onclick="closeUploadModal()" style="flex: 1;">
-                        Batal
-                    </button>
-                    <button type="submit" class="btn btn-success" style="flex: 1;">
-                        <i class="fas fa-upload"></i> Upload
-                    </button>
+                <div style="display: flex; gap: 12px; margin-top: 30px;">
+                    <button type="button" class="btn btn-secondary" onclick="closeUploadModal()" style="flex: 1; justify-content: center;">Batal</button>
+                    <button type="submit" class="btn btn-success" style="flex: 1; justify-content: center;">Upload</button>
                 </div>
             </form>
         </div>
@@ -538,13 +533,13 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <script>
         function filterOrders(status) {
             const cards = document.querySelectorAll('.order-card');
-            const buttons = document.querySelectorAll('.tab-btn');
+            const btns = document.querySelectorAll('.tab-btn');
             
-            buttons.forEach(btn => btn.classList.remove('active'));
+            btns.forEach(b => b.classList.remove('active'));
             event.target.classList.add('active');
             
             cards.forEach(card => {
-                if (status === 'all' || card.dataset.status === status) {
+                if(status === 'all' || card.dataset.status === status) {
                     card.style.display = 'block';
                 } else {
                     card.style.display = 'none';
@@ -552,13 +547,21 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
             });
         }
         
-        function openUploadModal(transaksiId, kodeTransaksi) {
-            document.getElementById('transaksi_id').value = transaksiId;
+        function openUploadModal(id) {
+            document.getElementById('transaksi_id').value = id;
             document.getElementById('uploadModal').classList.add('active');
         }
         
         function closeUploadModal() {
             document.getElementById('uploadModal').classList.remove('active');
+        }
+        
+        // Close modal on click outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('uploadModal');
+            if (event.target == modal) {
+                closeUploadModal();
+            }
         }
     </script>
 </body>

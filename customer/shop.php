@@ -26,10 +26,11 @@ $size = isset($_GET['size']) ? clean_input($_GET['size']) : '';
 $sort = isset($_GET['sort']) ? clean_input($_GET['sort']) : 'terbaru';
 
 // Query untuk produk
-$query = "SELECT k.*, kat.nama_kategori 
-          FROM KAOS k 
-          LEFT JOIN KATEGORI kat ON k.kategori_id = kat.id 
-          WHERE k.stok > 0";
+$query = "SELECT k.*, kat.nama_kategori, MIN(v.harga) as harga, SUM(v.stok) as total_stok
+          FROM kaos_master k 
+          LEFT JOIN kategori kat ON k.kategori_id = kat.id 
+          JOIN kaos_varian v ON k.id = v.kaos_master_id
+          WHERE 1=1";
 
 $params = [];
 
@@ -44,17 +45,19 @@ if ($kategori > 0) {
 }
 
 if (!empty($size)) {
-    $query .= " AND k.size = :size";
+    $query .= " AND EXISTS (SELECT 1 FROM kaos_varian v2 WHERE v2.kaos_master_id = k.id AND v2.size = :size)";
     $params[':size'] = $size;
 }
+
+$query .= " GROUP BY k.id HAVING total_stok > 0";
 
 // Sorting
 switch($sort) {
     case 'termurah':
-        $query .= " ORDER BY k.harga ASC";
+        $query .= " ORDER BY harga ASC";
         break;
     case 'termahal':
-        $query .= " ORDER BY k.harga DESC";
+        $query .= " ORDER BY harga DESC";
         break;
     case 'nama':
         $query .= " ORDER BY k.nama_kaos ASC";
@@ -67,13 +70,22 @@ try {
     $stmt = $conn->prepare($query);
     $stmt->execute($params);
     $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Prepare variants data for JS
+    $variants_data = [];
+    foreach ($products as $p) {
+        $q = "SELECT id, warna, warna_hex, size, harga, foto_varian as foto, stok FROM kaos_varian WHERE kaos_master_id = :master_id";
+        $st = $conn->prepare($q);
+        $st->execute(['master_id' => $p['id']]);
+        $variants_data[$p['id']] = $st->fetchAll(PDO::FETCH_ASSOC);
+    }
 } catch(PDOException $e) {
     $products = [];
 }
 
 // Get categories
 try {
-    $stmt_kat = $conn->query("SELECT * FROM KATEGORI ORDER BY nama_kategori");
+    $stmt_kat = $conn->query("SELECT * FROM kategori ORDER BY nama_kategori");
     $categories = $stmt_kat->fetchAll(PDO::FETCH_ASSOC);
 } catch(PDOException $e) {
     $categories = [];
@@ -83,7 +95,7 @@ try {
 $cart_count = 0;
 if (isset($_SESSION['user_id'])) {
     try {
-        $stmt_cart = $conn->prepare("SELECT SUM(qty) as total FROM CART WHERE customer_id = :customer_id");
+        $stmt_cart = $conn->prepare("SELECT SUM(qty) as total FROM cart WHERE customer_id = :customer_id");
         $stmt_cart->execute([':customer_id' => $_SESSION['user_id']]);
         $cart_result = $stmt_cart->fetch(PDO::FETCH_ASSOC);
         $cart_count = $cart_result['total'] ?? 0;
@@ -98,7 +110,7 @@ if (isset($_SESSION['user_id'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Shop - DistroZone</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * {
@@ -107,16 +119,37 @@ if (isset($_SESSION['user_id'])) {
             box-sizing: border-box;
         }
         
-        body {
-            font-family: 'Inter', sans-serif;
-            background: #F8FAFC;
-            color: #334155;
+        :root {
+            --primary: #10B981; /* Emerald 500 */
+            --secondary: #0F766E; /* Teal 700 */
+            --dark: #1F2937;
+            --light: #F9FAFB;
         }
         
-        /* Navbar - TANPA MENU HAMBURGER */
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #ECFDF5;
+            background-image: 
+                radial-gradient(at 0% 0%, hsla(160,100%,25%,0.05) 0, transparent 50%), 
+                radial-gradient(at 50% 0%, hsla(180,100%,30%,0.05) 0, transparent 50%), 
+                radial-gradient(at 100% 0%, hsla(150,100%,30%,0.05) 0, transparent 50%);
+            background-size: 200% 200%;
+            animation: gradientBG 15s ease infinite;
+            color: #334155;
+            min-height: 100vh;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+        /* Navbar */
         .navbar {
-            background: white;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
             padding: 16px 0;
             position: sticky;
             top: 0;
@@ -134,12 +167,11 @@ if (isset($_SESSION['user_id'])) {
         
         .logo {
             font-size: 24px;
-            font-weight: 700;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             text-decoration: none;
-            display: inline-block;
         }
         
         .nav-links {
@@ -150,40 +182,34 @@ if (isset($_SESSION['user_id'])) {
         
         .nav-links a {
             text-decoration: none;
-            color: #334155;
+            color: var(--dark);
             font-weight: 500;
             transition: color 0.3s;
-            padding: 8px 0;
-            font-size: 15px;
+            position: relative;
         }
         
-        .nav-links a:hover {
-            color: #667eea;
-        }
-        
-        .nav-links a.active {
-            color: #667eea;
-            font-weight: 600;
+        .nav-links a:hover, .nav-links a.active {
+            color: var(--primary);
         }
         
         .cart-icon {
             position: relative;
-            text-decoration: none;
+            font-size: 18px;
         }
         
         .cart-badge {
             position: absolute;
             top: -8px;
             right: -8px;
-            background: #EF4444;
+            background: var(--secondary);
             color: white;
             border-radius: 50%;
-            width: 20px;
-            height: 20px;
+            width: 18px;
+            height: 18px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 700;
         }
         
@@ -191,358 +217,315 @@ if (isset($_SESSION['user_id'])) {
         .container {
             max-width: 1400px;
             margin: 0 auto;
-            padding: 32px 24px;
-            min-height: calc(100vh - 80px);
+            padding: 40px 24px;
         }
         
         .shop-layout {
             display: grid;
             grid-template-columns: 280px 1fr;
-            gap: 32px;
+            gap: 40px;
         }
         
         /* Sidebar Filters */
         .filters-sidebar {
-            background: white;
-            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
             padding: 24px;
             height: fit-content;
             position: sticky;
-            top: 88px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            top: 100px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255,255,255,0.5);
         }
         
         .filter-section {
-            margin-bottom: 28px;
+            margin-bottom: 30px;
         }
         
         .filter-title {
             font-weight: 700;
-            color: #1E293B;
+            color: var(--dark);
             margin-bottom: 16px;
-            font-size: 15px;
+            font-size: 16px;
         }
         
         .filter-option {
-            padding: 10px 0;
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            border-radius: 12px;
             cursor: pointer;
             color: #64748B;
-            transition: color 0.3s;
+            transition: all 0.3s;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
             text-decoration: none;
+            font-weight: 500;
         }
         
         .filter-option:hover {
-            color: #667eea;
+            background: rgba(79, 70, 229, 0.05);
+            color: var(--primary);
         }
         
         .filter-option.active {
-            color: #667eea;
-            font-weight: 600;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            color: white;
+            box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);
         }
         
         /* Products Area */
         .shop-header {
-            background: white;
-            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
             padding: 24px;
-            margin-bottom: 24px;
+            margin-bottom: 30px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        
-        .results-count {
-            color: #64748B;
-            font-size: 15px;
-        }
-        
-        .sort-select {
-            padding: 10px 16px;
-            border: 2px solid #E2E8F0;
-            border-radius: 10px;
-            font-size: 14px;
-            background: white;
-            cursor: pointer;
-            color: #334155;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            border: 1px solid rgba(255,255,255,0.5);
         }
         
         .search-bar {
             width: 100%;
             padding: 14px 20px 14px 48px;
-            border: 2px solid #E2E8F0;
-            border-radius: 12px;
+            border: 2px solid #E5E7EB;
+            border-radius: 14px;
             font-size: 15px;
-            margin-bottom: 20px;
-            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="%2364748B" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>') no-repeat 16px center;
-            transition: border-color 0.3s;
+            background: white url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="%2364748B" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>') no-repeat 16px center;
+            transition: all 0.3s;
+            font-family: inherit;
         }
         
         .search-bar:focus {
             outline: none;
-            border-color: #667eea;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1);
+        }
+        
+        .sort-select {
+            padding: 12px 20px;
+            border: 2px solid #E5E7EB;
+            border-radius: 12px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+            color: var(--dark);
+            font-family: inherit;
+            transition: all 0.3s;
+        }
+        
+        .sort-select:focus {
+            outline: none;
+            border-color: var(--primary);
         }
         
         .products-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 24px;
+            gap: 30px;
         }
         
         .product-card {
             background: white;
-            border-radius: 16px;
+            border-radius: 20px;
             overflow: hidden;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            transition: all 0.3s;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            display: flex;
+            flex-direction: column;
+            position: relative;
         }
         
         .product-card:hover {
-            transform: translateY(-8px);
-            box-shadow: 0 20px 40px rgba(102, 126, 234, 0.15);
+            transform: translateY(-10px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
         }
         
         .product-image {
             width: 100%;
-            height: 280px;
+            height: 250px;
             background-size: cover;
             background-position: center;
             background-color: #f1f5f9;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .product-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .product-card:hover .product-overlay {
+            opacity: 1;
         }
         
         .product-info {
-            padding: 20px;
+            padding: 24px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
         }
         
         .product-category {
             font-size: 12px;
-            color: #667eea;
-            font-weight: 600;
+            color: var(--primary);
+            font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 1px;
             margin-bottom: 8px;
         }
         
         .product-name {
             font-size: 18px;
-            font-weight: 600;
-            color: #1E293B;
+            font-weight: 700;
+            color: var(--dark);
             margin-bottom: 8px;
-            line-height: 1.3;
+            line-height: 1.4;
         }
         
         .product-meta {
             font-size: 13px;
             color: #64748B;
-            margin-bottom: 12px;
+            margin-bottom: 16px;
         }
         
         .product-footer {
+            margin-top: auto;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-top: 16px;
         }
         
         .product-price {
-            font-size: 22px;
-            font-weight: 700;
-            color: #667eea;
+            font-size: 20px;
+            font-weight: 800;
+            color: var(--dark);
         }
         
         .btn-add-cart {
-            padding: 10px 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 10px 16px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
             color: white;
             border: none;
-            border-radius: 10px;
+            border-radius: 12px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s;
             display: flex;
             align-items: center;
             gap: 8px;
-            font-size: 14px;
+            font-size: 13px;
+            box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.3);
         }
         
         .btn-add-cart:hover {
             transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.4);
         }
         
         .btn-add-cart:disabled {
             opacity: 0.7;
             cursor: not-allowed;
-            transform: none !important;
-            box-shadow: none !important;
-            background: #CBD5E1;
-        }
-        
-        .empty-state {
-            text-align: center;
-            padding: 80px 20px;
-            background: white;
-            border-radius: 16px;
-            grid-column: 1 / -1;
-        }
-        
-        .empty-state i {
-            font-size: 64px;
-            color: #CBD5E1;
-            margin-bottom: 20px;
-        }
-        
-        .empty-state h3 {
-            margin-bottom: 12px;
-            color: #1E293B;
-        }
-        
-        .empty-state p {
-            color: #64748B;
-            margin-bottom: 24px;
-        }
-        
-        .stok-info {
-            font-size: 13px;
-            color: #64748B;
-            margin-top: 8px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        
-        .stok-info .tersedia {
-            color: #10B981;
-            font-weight: 600;
-        }
-        
-        .stok-info .habis {
-            color: #EF4444;
-            font-weight: 600;
-        }
-        
-        .size-badge {
-            display: inline-block;
-            padding: 4px 10px;
-            background: #E2E8F0;
-            color: #64748B;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            margin-left: 8px;
+            background: #94a3b8;
+            box-shadow: none;
+            transform: none;
         }
         
         .filter-buttons {
             display: flex;
-            gap: 8px;
-            margin-top: 16px;
+            gap: 10px;
+            margin-top: 10px;
             flex-wrap: wrap;
         }
         
         .filter-btn {
-            padding: 6px 12px;
-            background: #F1F5F9;
-            border: none;
-            border-radius: 8px;
+            padding: 8px 16px;
+            background: white;
+            border: 1px solid #E5E7EB;
+            border-radius: 10px;
             color: #64748B;
             font-size: 13px;
-            cursor: pointer;
-            transition: all 0.3s;
             text-decoration: none;
-            display: inline-block;
+            transition: all 0.2s;
+            font-weight: 500;
         }
         
         .filter-btn:hover {
-            background: #E2E8F0;
-            text-decoration: none;
+            border-color: var(--primary);
+            color: var(--primary);
         }
         
         .filter-btn.active {
-            background: #667eea;
+            background: var(--primary);
             color: white;
+            border-color: var(--primary);
         }
         
-        /* Responsive - TANPA MENU HAMBURGER */
+        .custom-notification {
+            z-index: 1000;
+            padding: 16px 24px;
+            border-radius: 12px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            animation: slideIn 0.3s ease-out;
+            font-weight: 500;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        .empty-state {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 60px 20px;
+            background: white;
+            border-radius: 20px;
+            color: #64748B;
+        }
+        
         @media (max-width: 1024px) {
             .shop-layout {
                 grid-template-columns: 1fr;
             }
-            
             .filters-sidebar {
                 position: relative;
                 top: 0;
             }
-            
-            .nav-links {
-                gap: 20px;
-            }
         }
         
         @media (max-width: 768px) {
-            .products-grid {
-                grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-            }
-            
             .navbar-content {
-                padding: 0 16px;
                 flex-direction: column;
                 gap: 16px;
             }
-            
-            .nav-links {
-                width: 100%;
-                justify-content: center;
-                flex-wrap: wrap;
-                gap: 16px;
-            }
-            
-            .container {
-                padding: 24px 16px;
-            }
-            
             .shop-header {
                 flex-direction: column;
                 gap: 16px;
                 align-items: stretch;
             }
-            
-            .sort-select {
-                width: 100%;
-            }
-        }
-        
-        @media (max-width: 480px) {
             .products-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .product-footer {
-                flex-direction: column;
-                gap: 12px;
-                align-items: stretch;
-            }
-            
-            .btn-add-cart {
-                width: 100%;
-                justify-content: center;
-            }
-            
-            .nav-links {
-                font-size: 14px;
-                gap: 12px;
-            }
-            
-            .nav-links a {
-                font-size: 14px;
+                grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
             }
         }
     </style>
 </head>
 <body>
-    <!-- Navbar - TANPA MENU HAMBURGER -->
     <nav class="navbar">
         <div class="navbar-content">
             <a href="index.php" class="logo">DistroZone</a>
@@ -550,23 +533,20 @@ if (isset($_SESSION['user_id'])) {
                 <a href="index.php">Home</a>
                 <a href="shop.php" class="active">Shop</a>
                 <?php if(isset($_SESSION['user_id'])): ?>
-                    <a href="orders.php">Pesanan</a>
                     <a href="cart.php" class="cart-icon">
-                        <i class="fas fa-shopping-cart"></i>
+                        <i class="fas fa-shopping-bag"></i>
                         <?php if($cart_count > 0): ?>
                             <span class="cart-badge"><?php echo $cart_count; ?></span>
                         <?php endif; ?>
                     </a>
-                    <a href="../auth/logout.php">Logout</a>
+                    <a href="../auth/logout.php" class="btn">Logout</a>
                 <?php else: ?>
-                    <a href="../auth/login.php">Login</a>
-                    <a href="../auth/register.php">Register</a>
+                    <a href="../auth/login.php" class="btn">Login</a>
                 <?php endif; ?>
             </div>
         </div>
     </nav>
     
-    <!-- Main Content -->
     <div class="container">
         <div class="shop-layout">
             <!-- Filters Sidebar -->
@@ -604,8 +584,8 @@ if (isset($_SESSION['user_id'])) {
                 
                 <div class="filter-section">
                     <h3 class="filter-title">Reset Filter</h3>
-                    <a href="shop.php" class="btn-add-cart" style="width: 100%; justify-content: center; padding: 12px; text-decoration: none;">
-                        <i class="fas fa-redo"></i> Reset Semua Filter
+                    <a href="shop.php" class="btn-add-cart" style="justify-content: center; text-decoration: none;">
+                        <i class="fas fa-redo"></i> Reset
                     </a>
                 </div>
             </aside>
@@ -613,89 +593,60 @@ if (isset($_SESSION['user_id'])) {
             <!-- Products Area -->
             <div class="products-area">
                 <div class="shop-header">
-                    <div class="results-count">
-                        <?php echo count($products); ?> produk ditemukan
+                    <div class="results-count" style="color: #64748B; font-weight: 500;">
+                        Menampilkan <?php echo count($products); ?> produk
                     </div>
-                    <form method="GET" style="display: flex; gap: 12px; align-items: center;">
-                        <?php if($kategori > 0): ?>
-                            <input type="hidden" name="kategori" value="<?php echo $kategori; ?>">
-                        <?php endif; ?>
-                        <?php if(!empty($size)): ?>
-                            <input type="hidden" name="size" value="<?php echo $size; ?>">
-                        <?php endif; ?>
-                        <?php if(!empty($search)): ?>
-                            <input type="hidden" name="search" value="<?php echo htmlspecialchars($search); ?>">
-                        <?php endif; ?>
+                    
+                    <form method="GET" style="display: flex; gap: 12px; align-items: center; flex: 1; justify-content: flex-end;">
+                        <?php if($kategori > 0): ?> <input type="hidden" name="kategori" value="<?php echo $kategori; ?>"> <?php endif; ?>
+                        <?php if(!empty($size)): ?> <input type="hidden" name="size" value="<?php echo $size; ?>"> <?php endif; ?>
+                        <?php if(!empty($search)): ?> <input type="hidden" name="search" value="<?php echo htmlspecialchars($search); ?>"> <?php endif; ?>
+                        
                         <select name="sort" class="sort-select" onchange="this.form.submit()">
                             <option value="terbaru" <?php echo $sort == 'terbaru' ? 'selected' : ''; ?>>Terbaru</option>
-                            <option value="termurah" <?php echo $sort == 'termurah' ? 'selected' : ''; ?>>Termurah</option>
-                            <option value="termahal" <?php echo $sort == 'termahal' ? 'selected' : ''; ?>>Termahal</option>
+                            <option value="termurah" <?php echo $sort == 'termurah' ? 'selected' : ''; ?>>Harga Terendah</option>
+                            <option value="termahal" <?php echo $sort == 'termahal' ? 'selected' : ''; ?>>Harga Tertinggi</option>
                             <option value="nama" <?php echo $sort == 'nama' ? 'selected' : ''; ?>>Nama A-Z</option>
                         </select>
                     </form>
                 </div>
                 
-                <form method="GET" id="searchForm">
-                    <?php if($kategori > 0): ?>
-                        <input type="hidden" name="kategori" value="<?php echo $kategori; ?>">
-                    <?php endif; ?>
-                    <?php if(!empty($size)): ?>
-                        <input type="hidden" name="size" value="<?php echo $size; ?>">
-                    <?php endif; ?>
+                <form method="GET" style="margin-bottom: 30px;">
+                    <?php if($kategori > 0): ?> <input type="hidden" name="kategori" value="<?php echo $kategori; ?>"> <?php endif; ?>
+                    <?php if(!empty($size)): ?> <input type="hidden" name="size" value="<?php echo $size; ?>"> <?php endif; ?>
                     <input type="text" name="search" class="search-bar" 
-                           placeholder="Cari produk berdasarkan nama atau merek..." 
+                           placeholder="Cari produk apa hari ini?" 
                            value="<?php echo htmlspecialchars($search); ?>">
-                    <button type="submit" style="display: none;"></button>
                 </form>
                 
                 <?php if(empty($products)): ?>
                     <div class="empty-state">
-                        <i class="fas fa-search"></i>
+                        <i class="fas fa-search" style="font-size: 64px; color: #CBD5E1; margin-bottom: 20px;"></i>
                         <h3>Produk Tidak Ditemukan</h3>
-                        <p>Tidak ada produk yang sesuai dengan kriteria pencarian Anda</p>
-                        <a href="shop.php" style="display: inline-block; padding: 12px 24px; background: #667eea; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; margin-top: 16px;">
-                            <i class="fas fa-redo"></i> Tampilkan Semua Produk
-                        </a>
+                        <p>Coba kata kunci lain atau reset filter Anda.</p>
+                        <a href="shop.php" class="btn-add-cart" style="display: inline-block; text-decoration: none; padding: 12px 24px;">Lihat Semua Produk</a>
                     </div>
                 <?php else: ?>
-                    <div class="products-grid" id="productsGrid">
-                        <?php foreach($products as $product): 
-                            $stok_class = $product['stok'] > 0 ? 'tersedia' : 'habis';
-                            $stok_text = $product['stok'] > 0 ? $product['stok'].' pcs tersedia' : 'Stok habis';
-                        ?>
+                    <div class="products-grid">
+                        <?php foreach($products as $product): ?>
                         <div class="product-card">
-                            <div class="product-image" style="background-image: url('../assets/uploads/products/<?php echo !empty($product['foto']) ? htmlspecialchars($product['foto']) : 'default.jpg'; ?>');"></div>
+                            <div class="product-image" style="background-image: url('../<?php echo !empty($product['foto_utama']) ? htmlspecialchars($product['foto_utama']) : 'assets/img/no-image.jpg'; ?>');">
+                            </div>
+                            
                             <div class="product-info">
                                 <div class="product-category"><?php echo htmlspecialchars($product['nama_kategori']); ?></div>
                                 <div class="product-name"><?php echo htmlspecialchars($product['nama_kaos']); ?></div>
+                                
                                 <div class="product-meta">
-                                    <div style="margin-bottom: 8px;">
-                                        <span style="color: #667eea; font-weight: 500;">
-                                            <i class="fas fa-tag"></i> <?php echo htmlspecialchars($product['merek']); ?>
-                                        </span>
-                                    </div>
-                                    <div style="margin-bottom: 8px;">
-                                        <span style="color: #64748B;">
-                                            <i class="fas fa-palette"></i> <?php echo htmlspecialchars($product['warna']); ?>
-                                        </span>
-                                        <span class="size-badge">
-                                            <i class="fas fa-ruler"></i> <?php echo htmlspecialchars($product['size']); ?>
-                                        </span>
-                                    </div>
-                                    <div class="stok-info">
-                                        <i class="fas fa-box"></i>
-                                        <span class="<?php echo $stok_class; ?>"><?php echo $stok_text; ?></span>
-                                    </div>
+                                    <i class="fas fa-layer-group" style="color: var(--primary);"></i> <?php echo htmlspecialchars($product['merek']); ?>
+                                    &nbsp;|&nbsp; 
+                                    <i class="fas fa-boxes" style="color: var(--primary);"></i> Stok: <?php echo htmlspecialchars($product['total_stok']); ?>
                                 </div>
+                                
                                 <div class="product-footer">
-                                    <div class="product-price"><?php echo format_rupiah($product['harga']); ?></div>
-                                    <button class="btn-add-cart" 
-                                            onclick="addToCart(<?php echo $product['id']; ?>, this)"
-                                            <?php echo $product['stok'] <= 0 ? 'disabled' : ''; ?>
-                                            data-product-id="<?php echo $product['id']; ?>"
-                                            data-product-name="<?php echo htmlspecialchars($product['nama_kaos']); ?>">
-                                        <i class="fas fa-cart-plus"></i> 
-                                        <?php echo $product['stok'] > 0 ? 'Tambah' : 'Habis'; ?>
+                                    <div class="product-price">Mulai <?php echo format_rupiah($product['harga']); ?></div>
+                                    <button onclick='openQuickView(<?php echo json_encode($product); ?>)' class="btn-add-cart" style="text-decoration: none; border: none; cursor: pointer; width: 100%;">
+                                        Detail
                                     </button>
                                 </div>
                             </div>
@@ -707,158 +658,312 @@ if (isset($_SESSION['user_id'])) {
         </div>
     </div>
     
+    <!-- Quick View Modal -->
+    <style>
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(5px);
+        }
+
+        .modal.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal-content-qv {
+            background: white;
+            padding: 30px;
+            border-radius: 24px;
+            width: 90%;
+            max-width: 900px;
+            display: grid;
+            grid-template-columns: 400px 1fr;
+            gap: 40px;
+            position: relative;
+            transform: translateY(20px);
+            transition: all 0.3s ease;
+        }
+
+        .modal.active .modal-content-qv {
+            transform: translateY(0);
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 24px;
+            cursor: pointer;
+            color: #64748B;
+            transition: color 0.3s;
+        }
+
+        .modal-close:hover {
+            color: var(--primary);
+        }
+
+        .modal-img-container {
+            border-radius: 16px;
+            overflow: hidden;
+            background: #F1F5F9;
+        }
+
+        .modal-img {
+            width: 100%;
+            height: 400px;
+            object-fit: cover;
+            transition: opacity 0.3s;
+        }
+
+        .variant-label {
+            display: block;
+            margin-bottom: 12px;
+            font-weight: 600;
+            color: var(--dark);
+            font-size: 14px;
+        }
+
+        .color-variants {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .color-option {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid white;
+            box-shadow: 0 0 0 1px #E2E8F0;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .color-option.active {
+            box-shadow: 0 0 0 2px var(--primary);
+            transform: scale(1.1);
+        }
+
+        .color-tooltip {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--dark);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.2s;
+        }
+
+        .color-option:hover .color-tooltip {
+            opacity: 1;
+            visibility: visible;
+            bottom: 120%;
+        }
+
+        .size-variants {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+            max-width: 300px;
+        }
+
+        .size-option {
+            padding: 8px 16px;
+            border: 2px solid #F1F5F9;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.2s;
+            color: #64748B;
+        }
+
+        .size-option:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .size-option.active {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: white;
+        }
+    </style>
+
+    <div id="quickViewModal" class="modal">
+        <div class="modal-content-qv">
+            <span class="modal-close" onclick="closeQuickView()"><i class="fas fa-times"></i></span>
+            <div class="modal-img-container">
+                <img id="modalImg" src="" alt="" class="modal-img">
+            </div>
+            <div class="modal-details">
+                <span id="modalMerek" style="color: var(--primary); font-weight: 700; font-size: 14px; display: block; margin-bottom: 8px;"></span>
+                <h2 id="modalTitle" style="margin-bottom: 12px; font-weight: 800;"></h2>
+                <div id="modalPrice" style="font-size: 24px; font-weight: 800; color: var(--secondary); margin-bottom: 20px;"></div>
+                <p id="modalDesc" style="color: #64748B; font-size: 14px; line-height: 1.6; margin-bottom: 24px;"></p>
+                
+                <div class="variant-selection">
+                    <span class="variant-label">Warna</span>
+                    <div id="colorContainer" class="color-variants"></div>
+
+                    <span class="variant-label">Ukuran</span>
+                    <div id="sizeContainer" class="size-variants"></div>
+                </div>
+
+                <div style="font-size: 13px; color: #64748B; margin-bottom: 20px;">
+                    Stok Tersedia: <span id="stockValue" style="font-weight: 700; color: var(--dark);"></span>
+                </div>
+
+                <button class="btn-add-cart" style="width: 100%; padding: 16px; border: none; cursor: pointer; font-size: 16px;" onclick="addToCartFromModal()">
+                    <i class="fas fa-shopping-cart"></i> Tambah ke Keranjang
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
-        // Add to Cart Function
-        async function addToCart(productId, button) {
+        const allVariants = <?php echo json_encode($variants_data); ?>;
+        let currentProduct = null;
+        let selectedVariant = null;
+
+        function formatRupiahJS(number) {
+            return new Intl.NumberFormat('id-ID', {
+                style: 'currency',
+                currency: 'IDR',
+                minimumFractionDigits: 0
+            }).format(number);
+        }
+
+        function openQuickView(product) {
+            currentProduct = product;
+            const modal = document.getElementById('quickViewModal');
+            const variants = allVariants[product.id];
+            
+            document.getElementById('modalTitle').innerText = product.nama_kaos;
+            document.getElementById('modalMerek').innerText = product.merek || 'DistroZone';
+            document.getElementById('modalDesc').innerText = product.deskripsi || 'Kaos premium berkualitas.';
+            
+            const colorContainer = document.getElementById('colorContainer');
+            colorContainer.innerHTML = '';
+            
+            const uniqueColors = [];
+            const colorMap = new Map();
+            variants.forEach(v => {
+                if (!colorMap.has(v.warna)) {
+                    colorMap.set(v.warna, v.warna_hex || '#CBD5E1');
+                    uniqueColors.push({ name: v.warna, hex: v.warna_hex || '#CBD5E1' });
+                }
+            });
+            
+            uniqueColors.forEach((colorObj, index) => {
+                const opt = document.createElement('div');
+                opt.className = 'color-option' + (index === 0 ? ' active' : '');
+                opt.style.backgroundColor = colorObj.hex;
+                opt.onclick = () => selectColor(colorObj.name, product.id, opt);
+                
+                const tooltip = document.createElement('span');
+                tooltip.className = 'color-tooltip';
+                tooltip.innerText = colorObj.name;
+                opt.appendChild(tooltip);
+                colorContainer.appendChild(opt);
+            });
+            
+            if (uniqueColors.length > 0) selectColor(uniqueColors[0].name, product.id, colorContainer.firstChild);
+            modal.classList.add('active');
+        }
+
+        function selectColor(color, masterId, element) {
+            document.querySelectorAll('.color-option').forEach(el => el.classList.remove('active'));
+            element.classList.add('active');
+            
+            const variants = allVariants[masterId];
+            const colorVariants = variants.filter(v => v.warna === color);
+            const sizeContainer = document.getElementById('sizeContainer');
+            sizeContainer.innerHTML = '';
+            
+            colorVariants.forEach((v, index) => {
+                const opt = document.createElement('div');
+                opt.className = 'size-option' + (index === 0 ? ' active' : '');
+                opt.innerText = v.size;
+                opt.onclick = () => selectSize(v, opt);
+                sizeContainer.appendChild(opt);
+            });
+            if (colorVariants.length > 0) selectSize(colorVariants[0], sizeContainer.firstChild);
+        }
+
+        function selectSize(variant, element) {
+            document.querySelectorAll('.size-option').forEach(el => el.classList.remove('active'));
+            element.classList.add('active');
+            selectedVariant = variant;
+            
+            const img = document.getElementById('modalImg');
+            img.style.opacity = '0';
+            setTimeout(() => {
+                img.src = '../' + (variant.foto || currentProduct.foto_utama || 'assets/img/no-image.jpg');
+                img.style.opacity = '1';
+            }, 300);
+            
+            document.getElementById('modalPrice').innerText = formatRupiahJS(variant.harga);
+            document.getElementById('stockValue').innerText = variant.stok;
+        }
+
+        async function addToCartFromModal() {
+            if (!selectedVariant) return;
+            
             <?php if(!isset($_SESSION['user_id'])): ?>
-                alert('Silakan login terlebih dahulu untuk menambahkan ke keranjang!');
-                window.location.href = '../auth/login.php';
+                Swal.fire({
+                    title: 'Login Dulu',
+                    text: 'Silakan login untuk berbelanja.',
+                    icon: 'info',
+                    confirmButtonText: 'Login'
+                }).then(() => window.location.href = '../auth/login.php');
                 return;
             <?php endif; ?>
-            
-            const productName = button.getAttribute('data-product-name');
-            
-            // Disable button and show loading
-            const originalHTML = button.innerHTML;
-            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-            button.disabled = true;
-            
-            try {
-                const formData = new FormData();
-                formData.append('kaos_id', productId);
-                formData.append('qty', 1);
-                
-                const response = await fetch('../api/add_to_cart.php', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                const data = await response.json();
-                
-                if(data.success) {
-                    // Update cart count in navbar
-                    updateCartCount();
-                    
-                    // Show success message
-                    showNotification(`${productName} berhasil ditambahkan ke keranjang!`);
-                    
-                    // Update button state
-                    button.innerHTML = '<i class="fas fa-check"></i> Ditambahkan';
-                    setTimeout(() => {
-                        button.innerHTML = originalHTML;
-                        button.disabled = false;
-                    }, 2000);
-                    
-                } else {
-                    alert(data.message);
-                    button.innerHTML = originalHTML;
-                    button.disabled = false;
-                }
-                
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Terjadi kesalahan saat menambahkan ke keranjang');
-                button.innerHTML = originalHTML;
-                button.disabled = false;
+
+            const formData = new FormData();
+            formData.append('kaos_id', selectedVariant.id);
+            formData.append('qty', 1);
+
+            const response = await fetch('../api/add_to_cart.php', { method: 'POST', body: formData });
+            const data = await response.json();
+            if (data.success) {
+                Swal.fire({ title: 'Berhasil!', text: 'Produk masuk keranjang', icon: 'success', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000 });
+                document.querySelectorAll('.cart-badge').forEach(el => el.innerText = data.cart_count);
+                closeQuickView();
             }
         }
-        
-        // Update cart count in navbar
-        function updateCartCount() {
-            const cartBadge = document.querySelector('.cart-badge');
-            if (cartBadge) {
-                const currentCount = parseInt(cartBadge.textContent) || 0;
-                cartBadge.textContent = currentCount + 1;
-            } else {
-                // Create badge if doesn't exist
-                const cartIcon = document.querySelector('.cart-icon');
-                if (cartIcon) {
-                    const badge = document.createElement('span');
-                    badge.className = 'cart-badge';
-                    badge.textContent = '1';
-                    cartIcon.appendChild(badge);
-                }
-            }
+
+        function closeQuickView() {
+            document.getElementById('quickViewModal').classList.remove('active');
         }
-        
-        // Show notification
-        function showNotification(message) {
-            // Remove existing notification
-            const existingNotification = document.querySelector('.custom-notification');
-            if (existingNotification) {
-                existingNotification.remove();
-            }
-            
-            // Create notification element
-            const notification = document.createElement('div');
-            notification.className = 'custom-notification';
-            notification.style.cssText = `
-                position: fixed;
-                bottom: 20px;
-                right: 20px;
-                background: #10B981;
-                color: white;
-                padding: 15px 25px;
-                border-radius: 10px;
-                box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-                z-index: 9999;
-                animation: slideIn 0.3s ease;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                max-width: 400px;
-            `;
-            
-            notification.innerHTML = `
-                <i class="fas fa-check-circle" style="font-size: 20px;"></i>
-                <span>${message}</span>
-            `;
-            
-            document.body.appendChild(notification);
-            
-            // Remove notification after 3 seconds
-            setTimeout(() => {
-                notification.style.animation = 'slideOut 0.3s ease';
-                setTimeout(() => {
-                    if (notification.parentNode) {
-                        notification.parentNode.removeChild(notification);
-                    }
-                }, 300);
-            }, 3000);
+
+        window.onclick = function(e) { if (e.target.id == 'quickViewModal') closeQuickView(); }
+
+        // Existing addToCart kept for direct clicks if any, but we use Modal mostly
+        function showNotification(msg) {
+            Swal.fire({ text: msg, icon: 'success', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000 });
         }
-        
-        // Add animation styles for notification
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes slideIn {
-                from { transform: translateX(100%); opacity: 0; }
-                to { transform: translateX(0); opacity: 1; }
-            }
-            @keyframes slideOut {
-                from { transform: translateX(0); opacity: 1; }
-                to { transform: translateX(100%); opacity: 0; }
-            }
-        `;
-        document.head.appendChild(style);
-        
-        // Search with debounce
-        let searchTimeout;
-        const searchInput = document.querySelector('.search-bar');
-        if (searchInput) {
-            searchInput.addEventListener('input', function(e) {
-                clearTimeout(searchTimeout);
-                searchTimeout = setTimeout(() => {
-                    document.getElementById('searchForm').submit();
-                }, 500);
-            });
-        }
-        
-        // Auto focus search input
-        document.addEventListener('DOMContentLoaded', function() {
-            if (searchInput && searchInput.value === '') {
-                searchInput.focus();
-            }
-        });
     </script>
 </body>
 </html>

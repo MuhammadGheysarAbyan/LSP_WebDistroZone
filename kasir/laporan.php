@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once '../config/database.php';
+require_once '../includes/functions.php';
 require_once '../includes/auth_check.php';
 
 check_kasir();
@@ -50,20 +51,21 @@ $stmt->execute([
 $profit_summary = $stmt->fetch(PDO::FETCH_ASSOC);
 
 // Get top selling products for this kasir
-$query = "SELECT 
-            k.nama_kaos,
-            k.merek,
-            k.kode_kaos,
+        $query = "SELECT 
+            km.nama_kaos,
+            km.merek,
+            kv.kode_varian as kode_kaos,
             SUM(dt.qty) as total_sold,
             SUM(dt.subtotal) as total_revenue,
             SUM(dt.laba) as total_profit
           FROM detail_transaksi dt
-          INNER JOIN kaos k ON dt.kaos_id = k.id
+          INNER JOIN kaos_varian kv ON dt.kaos_id = kv.id
+          INNER JOIN kaos_master km ON kv.kaos_master_id = km.id
           INNER JOIN transaksi t ON dt.transaksi_id = t.id
           WHERE DATE(t.tanggal) BETWEEN :start_date AND :end_date
           AND t.kasir_id = :kasir_id
           AND t.status IN ('completed', 'verified')
-          GROUP BY k.id
+          GROUP BY km.id
           ORDER BY total_sold DESC
           LIMIT 10";
 $stmt = $conn->prepare($query);
@@ -108,11 +110,20 @@ foreach ($daily_sales as $day) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Laporan Kasir - DistroZone</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        /* Same base styles as dashboard */
+         :root {
+            --primary: #10B981;
+            --primary-dark: #047857;
+            --secondary: #0F766E;
+            --bg-color: #ECFDF5;
+            --text-dark: #1F2937;
+            --text-light: #64748B;
+            --white: #FFFFFF;
+        }
+        
         * {
             margin: 0;
             padding: 0;
@@ -120,9 +131,15 @@ foreach ($daily_sales as $day) {
         }
         
         body {
-            font-family: 'Inter', sans-serif;
-            background: #F8FAFC;
-            color: #334155;
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-color);
+            color: var(--text-dark);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(16, 185, 129, 0.1) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(15, 118, 110, 0.1) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.1) 0px, transparent 50%),
+                radial-gradient(at 0% 100%, rgba(15, 118, 110, 0.1) 0px, transparent 50%);
+            background-attachment: fixed;
         }
         
         .dashboard-container {
@@ -133,115 +150,140 @@ foreach ($daily_sales as $day) {
         /* Sidebar */
         .sidebar {
             width: 280px;
-            background: #1E293B;
-            color: white;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(20px);
+            border-right: 1px solid rgba(255, 255, 255, 0.5);
             padding: 24px 0;
             position: fixed;
             height: 100vh;
             overflow-y: auto;
+            z-index: 100;
         }
         
         .logo {
             padding: 0 24px 24px;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
+            border-bottom: 1px solid rgba(16, 185, 129, 0.1);
             margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .logo i {
+            font-size: 24px;
+            color: var(--primary);
         }
         
         .logo h1 {
             font-size: 24px;
             font-weight: 700;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
         
         .nav-menu {
             list-style: none;
+            padding: 0 16px;
         }
         
         .nav-item {
-            margin: 4px 12px;
+            margin-bottom: 8px;
         }
         
         .nav-link {
             display: flex;
             align-items: center;
             padding: 12px 16px;
-            color: rgba(255,255,255,0.7);
+            color: var(--text-light);
             text-decoration: none;
-            border-radius: 10px;
-            transition: all 0.3s;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            font-weight: 500;
         }
         
         .nav-link:hover, .nav-link.active {
-            background: rgba(59, 130, 246, 0.2);
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
             color: white;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
         }
         
         .nav-link i {
             width: 24px;
             margin-right: 12px;
+            font-size: 18px;
         }
         
         /* Main Content */
         .main-content {
             flex: 1;
             margin-left: 280px;
-            padding: 24px;
+            padding: 32px;
         }
         
         .top-bar {
-            background: white;
-            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
             padding: 20px 24px;
-            margin-bottom: 24px;
+            margin-bottom: 32px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+            border: 1px solid rgba(255,255,255,0.5);
         }
         
         .top-bar h2 {
             font-size: 24px;
-            color: #1E293B;
+            font-weight: 700;
+            color: var(--text-dark);
         }
         
         .user-info {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 16px;
         }
         
         .user-avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: #3B82F6;
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
             color: white;
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: 600;
+            font-size: 20px;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
         }
         
         /* Content Card */
         .content-card {
-            background: white;
-            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
             padding: 24px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+            border: 1px solid rgba(255,255,255,0.5);
             margin-bottom: 24px;
         }
         
         .content-card h3 {
             margin-bottom: 20px;
-            color: #1E293B;
+            color: var(--text-dark);
         }
         
         /* Date Filter */
         .date-filter {
-            background: white;
-            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
             padding: 20px 24px;
-            margin-bottom: 24px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 32px;
+            border: 1px solid rgba(255,255,255,0.5);
         }
         
         .filter-form {
@@ -258,29 +300,31 @@ foreach ($daily_sales as $day) {
             display: block;
             margin-bottom: 8px;
             font-weight: 500;
-            color: #475569;
+            color: var(--text-dark);
         }
         
         .form-control {
             width: 100%;
             padding: 12px 16px;
-            border: 1px solid #E2E8F0;
-            border-radius: 10px;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            border-radius: 12px;
+            font-family: 'Outfit', sans-serif;
             font-size: 14px;
             transition: all 0.3s;
         }
         
         .form-control:focus {
             outline: none;
-            border-color: #3B82F6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
         }
         
         .btn {
             padding: 12px 24px;
             border: none;
-            border-radius: 10px;
+            border-radius: 12px;
             font-weight: 600;
+            font-family: 'Outfit', sans-serif;
             cursor: pointer;
             transition: all 0.3s;
             display: inline-flex;
@@ -289,33 +333,42 @@ foreach ($daily_sales as $day) {
         }
         
         .btn-primary {
-            background: #3B82F6;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
             color: white;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
         }
         
         .btn-primary:hover {
-            background: #2563EB;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(16, 185, 129, 0.3);
         }
         
+        .btn-success {
+            background: #10B981;
+            color: white;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+        }
+
         /* Stats Grid */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
             gap: 24px;
-            margin-bottom: 24px;
+            margin-bottom: 32px;
         }
         
         .stat-card {
-            background: white;
-            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
             padding: 24px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+            border: 1px solid rgba(255,255,255,0.5);
             transition: transform 0.3s;
         }
         
         .stat-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            transform: translateY(-5px);
         }
         
         .stat-card-header {
@@ -326,7 +379,7 @@ foreach ($daily_sales as $day) {
         }
         
         .stat-card-title {
-            color: #64748B;
+            color: var(--text-light);
             font-size: 14px;
             font-weight: 500;
         }
@@ -341,21 +394,16 @@ foreach ($daily_sales as $day) {
             font-size: 24px;
         }
         
-        .icon-blue { background: #DBEAFE; color: #3B82F6; }
-        .icon-green { background: #D1FAE5; color: #10B981; }
-        .icon-orange { background: #FEF3C7; color: #F59E0B; }
-        .icon-purple { background: #E9D5FF; color: #8B5CF6; }
-        
         .stat-card-value {
-            font-size: 32px;
+            font-size: 28px;
             font-weight: 700;
-            color: #1E293B;
+            color: var(--text-dark);
             margin-bottom: 4px;
         }
         
         .stat-card-subtitle {
             font-size: 12px;
-            color: #94A3B8;
+            color: var(--text-light);
         }
         
         /* Chart Container */
@@ -367,29 +415,27 @@ foreach ($daily_sales as $day) {
         /* Table */
         table {
             width: 100%;
-            border-collapse: collapse;
-        }
-        
-        thead {
-            background: #F8FAFC;
+            border-collapse: separate;
+            border-spacing: 0;
         }
         
         th {
-            padding: 12px;
+            padding: 16px;
             text-align: left;
             font-weight: 600;
-            color: #64748B;
+            color: var(--text-light);
             font-size: 14px;
-            border-bottom: 2px solid #E2E8F0;
+            border-bottom: 2px solid rgba(16, 185, 129, 0.1);
         }
         
         td {
-            padding: 16px 12px;
-            border-bottom: 1px solid #F1F5F9;
+            padding: 16px;
+            border-bottom: 1px solid rgba(16, 185, 129, 0.1);
+            vertical-align: middle;
         }
         
         tbody tr:hover {
-            background: #F8FAFC;
+            background-color: rgba(16, 185, 129, 0.05);
         }
         
         /* Export Buttons */
@@ -400,13 +446,22 @@ foreach ($daily_sales as $day) {
             justify-content: flex-end;
         }
         
-        .btn-success {
-            background: #10B981;
-            color: white;
-        }
-        
-        .btn-success:hover {
-            background: #059669;
+        @media print {
+            .sidebar, .top-bar, .date-filter, .export-buttons {
+                display: none !important;
+            }
+            .main-content {
+                margin-left: 0;
+                padding: 0;
+            }
+            body {
+                background: white;
+            }
+            .stat-card, .content-card {
+                box-shadow: none;
+                border: 1px solid #ddd;
+                break-inside: avoid;
+            }
         }
     </style>
 </head>
@@ -415,40 +470,17 @@ foreach ($daily_sales as $day) {
         <!-- Sidebar -->
         <aside class="sidebar">
             <div class="logo">
+                <i class="fas fa-layer-group"></i>
                 <h1>DistroZone</h1>
             </div>
             
             <ul class="nav-menu">
-                <li class="nav-item">
-                    <a href="index.php" class="nav-link">
-                        <i class="fas fa-home"></i>
-                        Dashboard
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="transaksi.php" class="nav-link">
-                        <i class="fas fa-cash-register"></i>
-                        Transaksi
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="laporan.php" class="nav-link active">
-                        <i class="fas fa-chart-line"></i>
-                        Laporan
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="profile.php" class="nav-link">
-                        <i class="fas fa-user"></i>
-                        Profile
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="../auth/logout.php" class="nav-link">
-                        <i class="fas fa-sign-out-alt"></i>
-                        Logout
-                    </a>
-                </li>
+                <li class="nav-item"><a href="index.php" class="nav-link"><i class="fas fa-home"></i>Dashboard</a></li>
+                <li class="nav-item"><a href="transaksi.php?view=recent" class="nav-link"><i class="fas fa-history"></i>Riwayat Transaksi</a></li>
+                <li class="nav-item"><a href="verifikasi.php" class="nav-link"><i class="fas fa-check-circle"></i>Verifikasi</a></li>
+                <li class="nav-item"><a href="laporan.php" class="nav-link active"><i class="fas fa-chart-line"></i>Laporan</a></li>
+                <li class="nav-item"><a href="profile.php" class="nav-link"><i class="fas fa-user"></i>Profile</a></li>
+                <li class="nav-item"><a href="../auth/logout.php" class="nav-link"><i class="fas fa-sign-out-alt"></i>Logout</a></li>
             </ul>
         </aside>
         
@@ -462,7 +494,7 @@ foreach ($daily_sales as $day) {
                     </div>
                     <div>
                         <div style="font-weight: 600;"><?php echo $_SESSION['nama']; ?></div>
-                        <div style="font-size: 12px; color: #64748B;">Kasir • <?php echo $_SESSION['shift'] ?? 'Shift'; ?></div>
+                        <div style="font-size: 12px; color: var(--text-light);">Kasir • <?php echo $_SESSION['shift'] ?? 'Shift'; ?></div>
                     </div>
                 </div>
             </div>
@@ -504,7 +536,7 @@ foreach ($daily_sales as $day) {
                         <div>
                             <div class="stat-card-title">Total Transaksi</div>
                         </div>
-                        <div class="stat-card-icon icon-blue">
+                        <div class="stat-card-icon" style="background: rgba(59, 130, 246, 0.1); color: #3B82F6;">
                             <i class="fas fa-shopping-cart"></i>
                         </div>
                     </div>
@@ -519,7 +551,7 @@ foreach ($daily_sales as $day) {
                         <div>
                             <div class="stat-card-title">Total Penjualan</div>
                         </div>
-                        <div class="stat-card-icon icon-green">
+                        <div class="stat-card-icon" style="background: rgba(16, 185, 129, 0.1); color: #10B981;">
                             <i class="fas fa-money-bill-wave"></i>
                         </div>
                     </div>
@@ -532,7 +564,7 @@ foreach ($daily_sales as $day) {
                         <div>
                             <div class="stat-card-title">Total Revenue</div>
                         </div>
-                        <div class="stat-card-icon icon-orange">
+                        <div class="stat-card-icon" style="background: rgba(245, 158, 11, 0.1); color: #F59E0B;">
                             <i class="fas fa-chart-line"></i>
                         </div>
                     </div>
@@ -545,7 +577,7 @@ foreach ($daily_sales as $day) {
                         <div>
                             <div class="stat-card-title">Total Laba</div>
                         </div>
-                        <div class="stat-card-icon icon-purple">
+                        <div class="stat-card-icon" style="background: rgba(139, 92, 246, 0.1); color: #8B5CF6;">
                             <i class="fas fa-hand-holding-usd"></i>
                         </div>
                     </div>
@@ -588,8 +620,8 @@ foreach ($daily_sales as $day) {
                     <tbody>
                         <?php if (empty($top_products)): ?>
                             <tr>
-                                <td colspan="5" style="text-align: center; padding: 40px; color: #94A3B8;">
-                                    <i class="fas fa-chart-bar" style="font-size: 48px; margin-bottom: 16px; display: block;"></i>
+                                <td colspan="5" style="text-align: center; padding: 40px; color: var(--text-light);">
+                                    <i class="fas fa-chart-bar" style="font-size: 48px; margin-bottom: 16px; display: block; opacity: 0.5;"></i>
                                     Tidak ada data penjualan pada periode ini
                                 </td>
                             </tr>
@@ -598,17 +630,17 @@ foreach ($daily_sales as $day) {
                             <tr>
                                 <td>
                                     <div style="font-weight: 600;"><?php echo htmlspecialchars($product['nama_kaos']); ?></div>
-                                    <div style="font-size: 12px; color: #94A3B8;"><?php echo htmlspecialchars($product['merek']); ?></div>
+                                    <div style="font-size: 12px; color: var(--text-light);"><?php echo htmlspecialchars($product['merek']); ?></div>
                                 </td>
                                 <td><?php echo htmlspecialchars($product['kode_kaos']); ?></td>
                                 <td>
                                     <div style="font-weight: 600;"><?php echo number_format($product['total_sold']); ?></div>
-                                    <div style="font-size: 12px; color: #94A3B8;">pcs</div>
+                                    <div style="font-size: 12px; color: var(--text-light);">pcs</div>
                                 </td>
                                 <td><?php echo format_rupiah($product['total_revenue']); ?></td>
                                 <td>
-                                    <div style="font-weight: 600; color: #059669;"><?php echo format_rupiah($product['total_profit']); ?></div>
-                                    <div style="font-size: 12px; color: #94A3B8;">
+                                    <div style="font-weight: 600; color: #10B981;"><?php echo format_rupiah($product['total_profit']); ?></div>
+                                    <div style="font-size: 12px; color: var(--text-light);">
                                         <?php 
                                             if ($product['total_revenue'] > 0) {
                                                 $margin = ($product['total_profit'] / $product['total_revenue']) * 100;
@@ -623,55 +655,6 @@ foreach ($daily_sales as $day) {
                     </tbody>
                 </table>
             </div>
-            
-            <!-- Profit Details -->
-            <div class="content-card">
-                <h3>Detail Laba Rugi</h3>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Keterangan</th>
-                            <th>Jumlah</th>
-                            <th>Persentase</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>Total Nilai Penjualan</td>
-                            <td><?php echo format_rupiah($profit_summary['total_sales_value'] ?? 0); ?></td>
-                            <td>100%</td>
-                        </tr>
-                        <tr>
-                            <td>Total Biaya Pokok</td>
-                            <td><?php echo format_rupiah($profit_summary['total_cost'] ?? 0); ?></td>
-                            <td>
-                                <?php 
-                                    if ($profit_summary['total_sales_value'] > 0) {
-                                        $cost_percentage = ($profit_summary['total_cost'] / $profit_summary['total_sales_value']) * 100;
-                                        echo number_format($cost_percentage, 1) . '%';
-                                    } else {
-                                        echo '0%';
-                                    }
-                                ?>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td>Total Laba Kotor</td>
-                            <td style="font-weight: 600; color: #059669;"><?php echo format_rupiah($profit_summary['total_profit'] ?? 0); ?></td>
-                            <td style="font-weight: 600; color: #059669;">
-                                <?php 
-                                    if ($profit_summary['total_sales_value'] > 0) {
-                                        $profit_percentage = ($profit_summary['total_profit'] / $profit_summary['total_sales_value']) * 100;
-                                        echo number_format($profit_percentage, 1) . '%';
-                                    } else {
-                                        echo '0%';
-                                    }
-                                ?>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
         </main>
     </div>
     
@@ -683,13 +666,17 @@ foreach ($daily_sales as $day) {
             data: {
                 labels: <?php echo json_encode($chart_labels); ?>,
                 datasets: [{
-                    label: 'Penjualan (Rp)',
+                    label: 'Penjualan',
                     data: <?php echo json_encode($chart_data); ?>,
-                    borderColor: '#3B82F6',
-                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    borderColor: '#10B981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
                     borderWidth: 2,
                     fill: true,
-                    tension: 0.4
+                    tension: 0.4,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#fff',
+                    pointBorderColor: '#10B981',
+                    pointHoverRadius: 6
                 }]
             },
             options: {
@@ -697,21 +684,26 @@ foreach ($daily_sales as $day) {
                 maintainAspectRatio: false,
                 plugins: {
                     legend: {
-                        display: true,
-                        position: 'top'
+                        display: false
                     },
                     tooltip: {
+                         mode: 'index',
+                        intersect: false,
+                        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                        titleColor: '#1F2937',
+                        bodyColor: '#10B981',
+                        borderColor: '#E2E8F0',
+                        borderWidth: 1,
+                        padding: 12,
                         callbacks: {
                             label: function(context) {
                                 let label = context.dataset.label || '';
                                 if (label) {
                                     label += ': ';
                                 }
-                                label += new Intl.NumberFormat('id-ID', {
-                                    style: 'currency',
-                                    currency: 'IDR',
-                                    minimumFractionDigits: 0
-                                }).format(context.parsed.y);
+                                if (context.parsed.y !== null) {
+                                    label += new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(context.parsed.y);
+                                }
                                 return label;
                             }
                         }
@@ -720,6 +712,10 @@ foreach ($daily_sales as $day) {
                 scales: {
                     y: {
                         beginAtZero: true,
+                         grid: {
+                            borderDash: [2, 4],
+                            color: '#E2E8F0'
+                        },
                         ticks: {
                             callback: function(value) {
                                 if (value >= 1000000) {
@@ -727,6 +723,11 @@ foreach ($daily_sales as $day) {
                                 }
                                 return 'Rp' + value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
                             }
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false
                         }
                     }
                 }
@@ -737,11 +738,6 @@ foreach ($daily_sales as $day) {
         function printReport() {
             window.print();
         }
-        
-        // Auto update chart on filter
-        document.querySelector('.filter-form').addEventListener('submit', function(e) {
-            // Chart will update when page reloads with new data
-        });
     </script>
 </body>
 </html>

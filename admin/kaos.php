@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once '../config/database.php';
+require_once '../includes/functions.php';
 require_once '../includes/auth_check.php';
 
 check_admin();
@@ -17,103 +18,219 @@ $action = $_GET['action'] ?? '';
 $id = $_GET['id'] ?? '';
 $search = $_GET['search'] ?? '';
 
+// Helper for contrast color
+function getContrastColor($hex) {
+    if (empty($hex)) return 'black';
+    $hex = str_replace('#', '', $hex);
+    if (strlen($hex) != 6) return 'black';
+    $r = hexdec(substr($hex, 0, 2));
+    $g = hexdec(substr($hex, 2, 2));
+    $b = hexdec(substr($hex, 4, 2));
+    $yiq = (($r * 299) + ($g * 587) + ($b * 114)) / 1000;
+    return ($yiq >= 128) ? 'black' : 'white';
+}
+
 // Handle actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if ($action === 'add') {
-        // Generate kode_kaos: KOS-XXX
-        $query = "SELECT COUNT(*) as count FROM kaos WHERE kode_kaos LIKE 'KOS-%'";
-        $stmt = $conn->query($query);
-        $count = $stmt->fetch(PDO::FETCH_ASSOC)['count'] + 1;
-        $kode_kaos = 'KOS-' . str_pad($count, 3, '0', STR_PAD_LEFT);
-        
-        $data = [
-            'kode_kaos' => $kode_kaos,
-            'nama_kaos' => $_POST['nama_kaos'],
-            'merek' => $_POST['merek'],
-            'type' => $_POST['type'],
-            'warna' => $_POST['warna'],
-            'size' => $_POST['size'],
-            'kategori_id' => $_POST['kategori_id'],
-            'harga' => $_POST['harga'],
-            'harga_pokok' => $_POST['harga_pokok'],
-            'stok' => $_POST['stok'],
-            'created_at' => date('Y-m-d H:i:s')
-        ];
-        
-        // Handle file upload
-        if (isset($_FILES['foto']) && $_FILES['foto']['error'] === UPLOAD_ERR_OK) {
-            $uploadDir = '../assets/uploads/products/';
-            $fileName = time() . '_' . basename($_FILES['foto']['name']);
-            $targetFile = $uploadDir . $fileName;
+    $conn->beginTransaction();
+    try {
+        if ($action === 'add') {
+            $master_data = [
+                'nama_kaos' => $_POST['nama_kaos'],
+                'merek' => $_POST['merek'],
+                'kategori_id' => $_POST['kategori_id'],
+                'type_kaos' => $_POST['type_kaos'],
+                'deskripsi' => $_POST['deskripsi']
+            ];
             
-            if (move_uploaded_file($_FILES['foto']['tmp_name'], $targetFile)) {
-                $data['foto'] = 'assets/uploads/products/' . $fileName;
+            if (isset($_FILES['foto_utama']) && $_FILES['foto_utama']['error'] === UPLOAD_ERR_OK) {
+                $upload_res = upload_file($_FILES['foto_utama'], '../assets/uploads/products/');
+                if ($upload_res['success']) {
+                    $master_data['foto_utama'] = 'assets/uploads/products/' . $upload_res['filename'];
+                }
             }
-        }
-        
-        $sql = "INSERT INTO kaos (" . implode(', ', array_keys($data)) . ") 
-                VALUES (:" . implode(', :', array_keys($data)) . ")";
-        $stmt = $conn->prepare($sql);
-        $stmt->execute($data);
-        
-        header('Location: kaos.php?success=Kaos berhasil ditambahkan');
-        exit;
-    }
-    elseif ($action === 'edit' && $id) {
-        $data = [
-            'nama_kaos' => $_POST['nama_kaos'],
-            'merek' => $_POST['merek'],
-            'type' => $_POST['type'],
-            'warna' => $_POST['warna'],
-            'size' => $_POST['size'],
-            'kategori_id' => $_POST['kategori_id'],
-            'harga' => $_POST['harga'],
-            'harga_pokok' => $_POST['harga_pokok'],
-            'stok' => $_POST['stok'],
-            'updated_at' => date('Y-m-d H:i:s')
-        ];
-        
-        // Handle file upload
-        if (isset($_FILES['foto']) && $_FILES['foto']['error'] === UPLOAD_ERR_OK) {
-            $uploadDir = '../assets/uploads/products/';
-            $fileName = time() . '_' . basename($_FILES['foto']['name']);
-            $targetFile = $uploadDir . $fileName;
+
+            $cols = implode(', ', array_keys($master_data));
+            $vals = ':' . implode(', :', array_keys($master_data));
+            $stmt = $conn->prepare("INSERT INTO kaos_master ($cols) VALUES ($vals)");
+            $stmt->execute($master_data);
+            $master_id = $conn->lastInsertId();
+
+            if (isset($_POST['warna']) && is_array($_POST['warna'])) {
+                foreach ($_POST['warna'] as $i => $warna) {
+                    $posted_sizes = $_POST['sizes'][$i] ?? [];
+                    
+                    // Handle Photo for this color group
+                    $photo_path = null;
+                    if (isset($_FILES['foto_varian']['name'][$i]) && $_FILES['foto_varian']['error'][$i] === UPLOAD_ERR_OK) {
+                        $v_file = [
+                            'name' => $_FILES['foto_varian']['name'][$i],
+                            'type' => $_FILES['foto_varian']['type'][$i],
+                            'tmp_name' => $_FILES['foto_varian']['tmp_name'][$i],
+                            'error' => $_FILES['foto_varian']['error'][$i],
+                            'size' => $_FILES['foto_varian']['size'][$i]
+                        ];
+                        $v_upload = upload_file($v_file, '../assets/uploads/products/');
+                        if ($v_upload['success']) {
+                            $photo_path = 'assets/uploads/products/' . $v_upload['filename'];
+                        }
+                    }
+
+                    foreach ($posted_sizes as $size) {
+                        $v_data = [
+                            'kaos_master_id' => $master_id,
+                            'kode_varian' => $master_data['nama_kaos'].'-'.$warna.'-'.$size.'-'.time() . '-' . uniqid(),
+                            'warna' => $warna,
+                            'warna_hex' => $_POST['warna_hex'][$i] ?? '#000000',
+                            'size' => $size,
+                            'harga' => $_POST['harga'][$i] ?? 0,
+                            'harga_pokok' => $_POST['harga_pokok'][$i] ?? 0,
+                            'stok' => $_POST['stok'][$i] ?? 0
+                        ];
+                        if ($photo_path) $v_data['foto_varian'] = $photo_path;
+
+                        $v_cols = implode(', ', array_keys($v_data));
+                        $v_vals = ':' . implode(', :', array_keys($v_data));
+                        $stmt_v = $conn->prepare("INSERT INTO kaos_varian ($v_cols) VALUES ($v_vals)");
+                        $stmt_v->execute($v_data);
+                    }
+                }
+            }
+            $conn->commit();
+            header('Location: kaos.php?success=Produk berhasil ditambahkan');
+            exit;
+        } elseif ($action === 'edit' && $id) {
+            $master_data = [
+                'nama_kaos' => $_POST['nama_kaos'],
+                'merek' => $_POST['merek'],
+                'kategori_id' => $_POST['kategori_id'],
+                'type_kaos' => $_POST['type_kaos'],
+                'deskripsi' => $_POST['deskripsi']
+            ];
             
-            if (move_uploaded_file($_FILES['foto']['tmp_name'], $targetFile)) {
-                $data['foto'] = 'assets/uploads/products/' . $fileName;
+            if (isset($_FILES['foto_utama']) && $_FILES['foto_utama']['error'] === UPLOAD_ERR_OK) {
+                $upload_res = upload_file($_FILES['foto_utama'], '../assets/uploads/products/');
+                if ($upload_res['success']) {
+                    $master_data['foto_utama'] = 'assets/uploads/products/' . $upload_res['filename'];
+                }
             }
+
+            $set = [];
+            foreach ($master_data as $key => $val) $set[] = "$key = :$key";
+            $stmt = $conn->prepare("UPDATE kaos_master SET " . implode(', ', $set) . " WHERE id = :id");
+            $master_data['id'] = $id;
+            $stmt->execute($master_data);
+
+            if (isset($_POST['warna']) && is_array($_POST['warna'])) {
+                // Keep track of which variants we should keep
+                $processed_variant_ids = [];
+
+                foreach ($_POST['warna'] as $i => $warna) {
+                    $posted_sizes = $_POST['sizes'][$i] ?? [];
+                    
+                    // Handle Photo for this color group
+                    $photo_path = null;
+                    if (isset($_FILES['foto_varian']['name'][$i]) && $_FILES['foto_varian']['error'][$i] === UPLOAD_ERR_OK) {
+                        $v_file = [
+                            'name' => $_FILES['foto_varian']['name'][$i],
+                            'type' => $_FILES['foto_varian']['type'][$i],
+                            'tmp_name' => $_FILES['foto_varian']['tmp_name'][$i],
+                            'error' => $_FILES['foto_varian']['error'][$i],
+                            'size' => $_FILES['foto_varian']['size'][$i]
+                        ];
+                        $v_upload = upload_file($v_file, '../assets/uploads/products/');
+                        if ($v_upload['success']) {
+                            $photo_path = 'assets/uploads/products/' . $v_upload['filename'];
+                        }
+                    }
+
+                    foreach ($posted_sizes as $size) {
+                        // Check if this variant already exists
+                        $check_stmt = $conn->prepare("SELECT id FROM kaos_varian WHERE kaos_master_id = :mid AND warna = :warna AND size = :size");
+                        $check_stmt->execute(['mid' => $id, 'warna' => $warna, 'size' => $size]);
+                        $existing_id = $check_stmt->fetchColumn();
+
+                        if ($existing_id) {
+                            $v_data = [
+                                'harga' => $_POST['harga'][$i] ?? 0,
+                                'harga_pokok' => $_POST['harga_pokok'][$i] ?? 0,
+                                'stok' => $_POST['stok'][$i] ?? 0,
+                                'warna_hex' => $_POST['warna_hex'][$i] ?? '#000000',
+                                'id' => $existing_id
+                            ];
+                            $set_q = "harga = :harga, harga_pokok = :harga_pokok, stok = :stok, warna_hex = :warna_hex";
+                            if ($photo_path) {
+                                $v_data['foto_varian'] = $photo_path;
+                                $set_q .= ", foto_varian = :foto_varian";
+                            }
+                            $upd_stmt = $conn->prepare("UPDATE kaos_varian SET $set_q WHERE id = :id");
+                            $upd_stmt->execute($v_data);
+                            $processed_variant_ids[] = $existing_id;
+                        } else {
+                            $v_data = [
+                                'kaos_master_id' => $id,
+                                'kode_varian' => $master_data['nama_kaos'].'-'.$warna.'-'.$size.'-'.time() . '-' . uniqid(),
+                                'warna' => $warna,
+                                'warna_hex' => $_POST['warna_hex'][$i] ?? '#000000',
+                                'size' => $size,
+                                'harga' => $_POST['harga'][$i] ?? 0,
+                                'harga_pokok' => $_POST['harga_pokok'][$i] ?? 0,
+                                'stok' => $_POST['stok'][$i] ?? 0
+                            ];
+                            if ($photo_path) $v_data['foto_varian'] = $photo_path;
+
+                            $v_cols = implode(', ', array_keys($v_data));
+                            $v_vals = ':' . implode(', :', array_keys($v_data));
+                            $stmt_v = $conn->prepare("INSERT INTO kaos_varian ($v_cols) VALUES ($v_vals)");
+                            $stmt_v->execute($v_data);
+                            $processed_variant_ids[] = $conn->lastInsertId();
+                        }
+                    }
+                }
+
+                // Delete variants that were removed
+                if (!empty($processed_variant_ids)) {
+                    $del_stmt = $conn->prepare("DELETE FROM kaos_varian WHERE kaos_master_id = :mid AND id NOT IN (" . implode(',', $processed_variant_ids) . ")");
+                    $del_stmt->execute(['mid' => $id]);
+                } else {
+                    $conn->prepare("DELETE FROM kaos_varian WHERE kaos_master_id = :mid")->execute(['mid' => $id]);
+                }
+            }
+            $conn->commit();
+            header('Location: kaos.php?success=Produk berhasil diperbarui');
+            exit;
         }
-        
-        $setClause = [];
-        foreach ($data as $key => $value) {
-            $setClause[] = "$key = :$key";
+        elseif ($action === 'delete' && $id) {
+            // Check if any variant is in transactions
+            $stmt = $conn->prepare("SELECT COUNT(*) FROM detail_transaksi WHERE kaos_id IN (SELECT id FROM kaos_varian WHERE kaos_master_id = :id)");
+            $stmt->execute(['id' => $id]);
+            if ($stmt->fetchColumn() > 0) {
+                throw new Exception("Tidak bisa menghapus produk yang sudah memiliki riwayat transaksi");
+            }
+
+            $conn->exec("DELETE FROM kaos_varian WHERE kaos_master_id = $id");
+            $conn->exec("DELETE FROM kaos_master WHERE id = $id");
+            $conn->commit();
+            header('Location: kaos.php?success=Produk berhasil dihapus');
+            exit;
         }
-        
-        $sql = "UPDATE kaos SET " . implode(', ', $setClause) . " WHERE id = :id";
-        $data['id'] = $id;
-        $stmt = $conn->prepare($sql);
-        $stmt->execute($data);
-        
-        header('Location: kaos.php?success=Kaos berhasil diupdate');
-        exit;
-    }
-    elseif ($action === 'delete' && $id) {
-        $sql = "DELETE FROM kaos WHERE id = :id";
-        $stmt = $conn->prepare($sql);
-        $stmt->execute(['id' => $id]);
-        
-        header('Location: kaos.php?success=Kaos berhasil dihapus');
+    } catch (Exception $e) {
+        $conn->rollBack();
+        header('Location: kaos.php?error=' . urlencode($e->getMessage()));
         exit;
     }
 }
 
 // Get kaos data with search
-$query = "SELECT k.*, kat.nama_kategori FROM kaos k 
+$query = "SELECT k.*, kat.nama_kategori, 
+          (SELECT COUNT(*) FROM kaos_varian WHERE kaos_master_id = k.id) as variant_count,
+          (SELECT SUM(stok) FROM kaos_varian WHERE kaos_master_id = k.id) as total_stok
+          FROM kaos_master k 
           LEFT JOIN kategori kat ON k.kategori_id = kat.id 
           WHERE 1=1";
           
 if ($search) {
-    $query .= " AND (k.nama_kaos LIKE :search OR k.merek LIKE :search OR k.kode_kaos LIKE :search)";
+    $query .= " AND (k.nama_kaos LIKE :search OR k.merek LIKE :search)";
 }
 
 $query .= " ORDER BY k.created_at DESC";
@@ -129,11 +246,36 @@ $kaos_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Get kaos detail for edit
 $kaos_detail = null;
+$variants_detail = [];
+$grouped_variants = [];
 if ($id && $action === 'edit') {
-    $query = "SELECT * FROM kaos WHERE id = :id";
+    $query = "SELECT * FROM kaos_master WHERE id = :id";
     $stmt = $conn->prepare($query);
     $stmt->execute(['id' => $id]);
     $kaos_detail = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    // Get variants
+    $query = "SELECT * FROM kaos_varian WHERE kaos_master_id = :id";
+    $stmt = $conn->prepare($query);
+    $stmt->execute(['id' => $id]);
+    $variants_detail = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Group by color and photo
+    foreach ($variants_detail as $v) {
+        $key = $v['warna'] . '_' . ($v['foto_varian'] ?? '');
+        if (!isset($grouped_variants[$key])) {
+            $grouped_variants[$key] = [
+                'warna' => $v['warna'],
+                'warna_hex' => $v['warna_hex'] ?? '#000000',
+                'harga' => $v['harga'],
+                'harga_pokok' => $v['harga_pokok'],
+                'stok' => $v['stok'],
+                'foto_varian' => $v['foto_varian'],
+                'sizes' => []
+            ];
+        }
+        $grouped_variants[$key]['sizes'][] = $v['size'];
+    }
 }
 ?>
 
@@ -143,10 +285,19 @@ if ($id && $action === 'edit') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kelola Kaos - DistroZone</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        /* Same base styles as karyawan.php */
+         :root {
+            --primary: #10B981;
+            --primary-dark: #047857;
+            --secondary: #0F766E;
+            --bg-color: #ECFDF5;
+            --text-dark: #1F2937;
+            --text-light: #64748B;
+            --white: #FFFFFF;
+        }
+        
         * {
             margin: 0;
             padding: 0;
@@ -154,9 +305,15 @@ if ($id && $action === 'edit') {
         }
         
         body {
-            font-family: 'Inter', sans-serif;
-            background: #F8FAFC;
-            color: #334155;
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-color);
+            color: var(--text-dark);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(16, 185, 129, 0.1) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(15, 118, 110, 0.1) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.1) 0px, transparent 50%),
+                radial-gradient(at 0% 100%, rgba(15, 118, 110, 0.1) 0px, transparent 50%);
+            background-attachment: fixed;
         }
         
         .dashboard-container {
@@ -167,106 +324,164 @@ if ($id && $action === 'edit') {
         /* Sidebar */
         .sidebar {
             width: 280px;
-            background: #1E293B;
-            color: white;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(20px);
+            border-right: 1px solid rgba(255, 255, 255, 0.5);
             padding: 24px 0;
             position: fixed;
             height: 100vh;
             overflow-y: auto;
+            z-index: 100;
         }
         
         .logo {
             padding: 0 24px 24px;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
+            border-bottom: 1px solid rgba(16, 185, 129, 0.1);
             margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .logo i {
+            font-size: 24px;
+            color: var(--primary);
         }
         
         .logo h1 {
             font-size: 24px;
             font-weight: 700;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
         
         .nav-menu {
             list-style: none;
+            padding: 0 16px;
         }
         
         .nav-item {
-            margin: 4px 12px;
+            margin-bottom: 8px;
         }
         
         .nav-link {
             display: flex;
             align-items: center;
             padding: 12px 16px;
-            color: rgba(255,255,255,0.7);
+            color: var(--text-light);
             text-decoration: none;
-            border-radius: 10px;
-            transition: all 0.3s;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            font-weight: 500;
         }
         
         .nav-link:hover, .nav-link.active {
-            background: rgba(59, 130, 246, 0.2);
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
             color: white;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
         }
         
         .nav-link i {
             width: 24px;
             margin-right: 12px;
+            font-size: 18px;
         }
         
         /* Main Content */
         .main-content {
             flex: 1;
             margin-left: 280px;
-            padding: 24px;
+            padding: 32px;
         }
         
         .top-bar {
-            background: white;
-            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
             padding: 20px 24px;
-            margin-bottom: 24px;
+            margin-bottom: 32px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+            border: 1px solid rgba(255,255,255,0.5);
         }
         
         .top-bar h2 {
             font-size: 24px;
-            color: #1E293B;
+            font-weight: 700;
+            color: var(--text-dark);
         }
         
         .user-info {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 16px;
         }
         
         .user-avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: #3B82F6;
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
             color: white;
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: 600;
+            font-size: 20px;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+        }
+
+        /* Stats Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 24px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+            border: 1px solid rgba(255,255,255,0.5);
+            transition: transform 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .stat-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-bottom: 16px;
         }
         
         /* Content Card */
         .content-card {
-            background: white;
-            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
             padding: 24px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+            border: 1px solid rgba(255,255,255,0.5);
             margin-bottom: 24px;
         }
         
         .content-card h3 {
-            margin-bottom: 20px;
-            color: #1E293B;
+            margin-bottom: 24px;
+            color: var(--text-dark);
+            font-size: 20px;
         }
         
         /* Search and Action Bar */
@@ -286,17 +501,19 @@ if ($id && $action === 'edit') {
         
         .search-box input {
             width: 100%;
-            padding: 12px 16px 12px 44px;
-            border: 1px solid #E2E8F0;
-            border-radius: 10px;
+            padding: 12px 16px 12px 48px;
+            background: white;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            border-radius: 12px;
+            font-family: 'Outfit', sans-serif;
             font-size: 14px;
             transition: all 0.3s;
         }
         
         .search-box input:focus {
             outline: none;
-            border-color: #3B82F6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
         }
         
         .search-box i {
@@ -304,14 +521,15 @@ if ($id && $action === 'edit') {
             left: 16px;
             top: 50%;
             transform: translateY(-50%);
-            color: #94A3B8;
+            color: var(--text-light);
         }
         
         .btn {
             padding: 12px 24px;
             border: none;
-            border-radius: 10px;
+            border-radius: 12px;
             font-weight: 600;
+            font-family: 'Outfit', sans-serif;
             cursor: pointer;
             transition: all 0.3s;
             display: inline-flex;
@@ -320,21 +538,25 @@ if ($id && $action === 'edit') {
         }
         
         .btn-primary {
-            background: #3B82F6;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
             color: white;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
         }
         
         .btn-primary:hover {
-            background: #2563EB;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(16, 185, 129, 0.3);
         }
         
         .btn-secondary {
-            background: #F1F5F9;
-            color: #475569;
+            background: white;
+            color: var(--text-light);
+            border: 1px solid rgba(16, 185, 129, 0.2);
         }
         
         .btn-secondary:hover {
-            background: #E2E8F0;
+            background: var(--bg-color);
+            color: var(--primary);
         }
         
         .btn-danger {
@@ -349,29 +571,31 @@ if ($id && $action === 'edit') {
         /* Table */
         table {
             width: 100%;
-            border-collapse: collapse;
-        }
-        
-        thead {
-            background: #F8FAFC;
+            border-collapse: separate;
+            border-spacing: 0;
         }
         
         th {
-            padding: 12px;
+            padding: 16px;
             text-align: left;
             font-weight: 600;
-            color: #64748B;
+            color: var(--text-light);
             font-size: 14px;
-            border-bottom: 2px solid #E2E8F0;
+            border-bottom: 2px solid rgba(16, 185, 129, 0.1);
         }
         
         td {
-            padding: 16px 12px;
-            border-bottom: 1px solid #F1F5F9;
+            padding: 16px;
+            border-bottom: 1px solid rgba(16, 185, 129, 0.1);
+            vertical-align: middle;
         }
         
+        tbody tr {
+            transition: background-color 0.3s;
+        }
+
         tbody tr:hover {
-            background: #F8FAFC;
+            background-color: rgba(16, 185, 129, 0.05);
         }
         
         /* Badges */
@@ -383,8 +607,8 @@ if ($id && $action === 'edit') {
         }
         
         .badge-success {
-            background: #D1FAE5;
-            color: #059669;
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--primary);
         }
         
         .badge-warning {
@@ -406,9 +630,9 @@ if ($id && $action === 'edit') {
         .product-image {
             width: 60px;
             height: 60px;
-            border-radius: 8px;
+            border-radius: 12px;
             object-fit: cover;
-            border: 1px solid #E2E8F0;
+            border: 1px solid rgba(16, 185, 129, 0.1);
         }
         
         /* Modal */
@@ -420,6 +644,7 @@ if ($id && $action === 'edit') {
             width: 100%;
             height: 100%;
             background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(5px);
             z-index: 1000;
             align-items: center;
             justify-content: center;
@@ -431,19 +656,31 @@ if ($id && $action === 'edit') {
         
         .modal-content {
             background: white;
-            border-radius: 16px;
+            border-radius: 20px;
             width: 90%;
             max-width: 600px;
             max-height: 90vh;
             overflow-y: auto;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
         }
         
         .modal-header {
             padding: 24px;
-            border-bottom: 1px solid #E2E8F0;
+            border-bottom: 1px solid rgba(16, 185, 129, 0.1);
             display: flex;
             justify-content: space-between;
             align-items: center;
+        }
+
+        .modal-header h3 {
+            color: var(--text-dark);
+            font-size: 20px;
         }
         
         .modal-body {
@@ -452,7 +689,7 @@ if ($id && $action === 'edit') {
         
         .modal-footer {
             padding: 24px;
-            border-top: 1px solid #E2E8F0;
+            border-top: 1px solid rgba(16, 185, 129, 0.1);
             display: flex;
             justify-content: flex-end;
             gap: 12px;
@@ -467,37 +704,39 @@ if ($id && $action === 'edit') {
             display: block;
             margin-bottom: 8px;
             font-weight: 500;
-            color: #475569;
+            color: var(--text-dark);
         }
         
         .form-control {
             width: 100%;
             padding: 12px 16px;
-            border: 1px solid #E2E8F0;
-            border-radius: 10px;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            border-radius: 12px;
+            font-family: 'Outfit', sans-serif;
             font-size: 14px;
             transition: all 0.3s;
         }
         
         .form-control:focus {
             outline: none;
-            border-color: #3B82F6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
         }
         
         /* File Upload */
         .file-upload {
-            border: 2px dashed #E2E8F0;
-            border-radius: 10px;
+            border: 2px dashed rgba(16, 185, 129, 0.3);
+            border-radius: 12px;
             padding: 32px;
             text-align: center;
             cursor: pointer;
             transition: all 0.3s;
+            background: rgba(16, 185, 129, 0.05);
         }
         
         .file-upload:hover {
-            border-color: #3B82F6;
-            background: #F8FAFC;
+            border-color: var(--primary);
+            background: rgba(16, 185, 129, 0.1);
         }
         
         .file-upload input {
@@ -510,14 +749,14 @@ if ($id && $action === 'edit') {
         
         .file-preview img {
             max-width: 200px;
-            border-radius: 8px;
-            border: 1px solid #E2E8F0;
+            border-radius: 12px;
+            border: 1px solid rgba(16, 185, 129, 0.1);
         }
         
         /* Alert */
         .alert {
             padding: 16px 24px;
-            border-radius: 10px;
+            border-radius: 12px;
             margin-bottom: 24px;
             display: flex;
             align-items: center;
@@ -545,7 +784,7 @@ if ($id && $action === 'edit') {
         .btn-icon {
             width: 36px;
             height: 36px;
-            border-radius: 8px;
+            border-radius: 10px;
             border: none;
             display: flex;
             align-items: center;
@@ -555,30 +794,30 @@ if ($id && $action === 'edit') {
         }
         
         .btn-icon.edit {
-            background: #DBEAFE;
+            background: rgba(59, 130, 246, 0.1);
             color: #3B82F6;
         }
         
         .btn-icon.edit:hover {
-            background: #BFDBFE;
+            background: rgba(59, 130, 246, 0.2);
         }
         
         .btn-icon.delete {
-            background: #FEE2E2;
+            background: rgba(239, 68, 68, 0.1);
             color: #EF4444;
         }
         
         .btn-icon.delete:hover {
-            background: #FECACA;
+            background: rgba(239, 68, 68, 0.2);
         }
         
         .btn-icon.view {
-            background: #D1FAE5;
+            background: rgba(16, 185, 129, 0.1);
             color: #10B981;
         }
         
         .btn-icon.view:hover {
-            background: #A7F3D0;
+            background: rgba(16, 185, 129, 0.2);
         }
         
         /* Stock Status */
@@ -597,6 +836,55 @@ if ($id && $action === 'edit') {
         .stock-high {
             color: #059669;
         }
+        /* Variant Table in Modal */
+        .variant-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            background: #F8FAFC;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .variant-table th {
+            background: #F1F5F9;
+            text-align: left;
+            padding: 12px;
+            font-size: 13px;
+            color: #64748B;
+        }
+
+        .variant-table td {
+            padding: 8px 12px;
+            border-bottom: 1px solid #E2E8F0;
+        }
+
+        .variant-table .form-control {
+            padding: 8px;
+            font-size: 13px;
+        }
+
+        .btn-add-variant {
+            background: #F1F5F9;
+            color: var(--primary);
+            border: 2px dashed var(--primary);
+            width: 100%;
+            padding: 12px;
+            border-radius: 12px;
+            margin-top: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .btn-add-variant:hover {
+            background: rgba(16, 185, 129, 0.05);
+        }
+
+        .modal-content {
+            max-width: 1420px;
+            width: 95%;
+        }
     </style>
 </head>
 <body>
@@ -604,6 +892,7 @@ if ($id && $action === 'edit') {
         <!-- Sidebar -->
         <aside class="sidebar">
             <div class="logo">
+                <i class="fas fa-layer-group"></i>
                 <h1>DistroZone</h1>
             </div>
             
@@ -626,12 +915,7 @@ if ($id && $action === 'edit') {
                         Kelola Kaos
                     </a>
                 </li>
-                <li class="nav-item">
-                    <a href="verifikasi.php" class="nav-link">
-                        <i class="fas fa-check-circle"></i>
-                        Verifikasi Pembayaran
-                    </a>
-                </li>
+
                 <li class="nav-item">
                     <a href="laporan.php" class="nav-link">
                         <i class="fas fa-chart-line"></i>
@@ -663,7 +947,7 @@ if ($id && $action === 'edit') {
                     </div>
                     <div>
                         <div style="font-weight: 600;"><?php echo $_SESSION['nama']; ?></div>
-                        <div style="font-size: 12px; color: #64748B;">Administrator</div>
+                        <div style="font-size: 12px; color: var(--text-light);">Administrator</div>
                     </div>
                 </div>
             </div>
@@ -701,64 +985,69 @@ if ($id && $action === 'edit') {
                     <thead>
                         <tr>
                             <th>Foto</th>
-                            <th>Kode</th>
-                            <th>Nama Kaos</th>
-                            <th>Merek</th>
+                            <th>Info Produk</th>
                             <th>Kategori</th>
-                            <th>Harga</th>
-                            <th>Stok</th>
+                            <th>Varian Warna</th>
+                            <th>Total Stok</th>
                             <th>Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if (empty($kaos_list)): ?>
                             <tr>
-                                <td colspan="8" style="text-align: center; padding: 40px; color: #94A3B8;">
-                                    <i class="fas fa-tshirt" style="font-size: 48px; margin-bottom: 16px; display: block;"></i>
+                                <td colspan="6" style="text-align: center; padding: 40px; color: var(--text-light);">
+                                    <i class="fas fa-tshirt" style="font-size: 48px; margin-bottom: 16px; display: block; opacity: 0.5;"></i>
                                     Belum ada data kaos
                                 </td>
                             </tr>
                         <?php else: ?>
                             <?php foreach ($kaos_list as $k): 
-                                $stockClass = $k['stok'] < 10 ? 'stock-low' : ($k['stok'] < 50 ? 'stock-medium' : 'stock-high');
+                                $stockClass = $k['total_stok'] < 10 ? 'stock-low' : ($k['total_stok'] < 50 ? 'stock-medium' : 'stock-high');
+                                
+                                // Get colors for this master
+                                $c_stmt = $conn->prepare("SELECT DISTINCT warna, warna_hex FROM kaos_varian WHERE kaos_master_id = :id");
+                                $c_stmt->execute(['id' => $k['id']]);
+                                $colors = $c_stmt->fetchAll(PDO::FETCH_ASSOC);
                             ?>
                             <tr>
                                 <td>
-                                    <?php if ($k['foto']): ?>
-                                        <img src="../<?php echo htmlspecialchars($k['foto']); ?>" 
+                                    <?php if ($k['foto_utama']): ?>
+                                        <img src="../<?php echo htmlspecialchars($k['foto_utama']); ?>" 
                                              alt="<?php echo htmlspecialchars($k['nama_kaos']); ?>" 
                                              class="product-image">
                                     <?php else: ?>
-                                        <div style="width: 60px; height: 60px; background: #F1F5F9; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
-                                            <i class="fas fa-tshirt" style="color: #94A3B8;"></i>
+                                        <div style="width: 60px; height: 60px; background: rgba(16, 185, 129, 0.1); border-radius: 12px; display: flex; align-items: center; justify-content: center;">
+                                            <i class="fas fa-tshirt" style="color: var(--primary);"></i>
                                         </div>
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <div style="font-weight: 600;"><?php echo htmlspecialchars($k['kode_kaos']); ?></div>
-                                    <div style="font-size: 12px; color: #94A3B8;">Size: <?php echo htmlspecialchars($k['size']); ?></div>
-                                </td>
-                                <td>
                                     <div style="font-weight: 600;"><?php echo htmlspecialchars($k['nama_kaos']); ?></div>
-                                    <div style="font-size: 12px; color: #94A3B8;">
-                                        <?php echo htmlspecialchars($k['type']); ?> • <?php echo htmlspecialchars($k['warna']); ?>
+                                    <div style="font-size: 12px; color: var(--text-light);">
+                                        <?php echo htmlspecialchars($k['merek']); ?> • <?php echo htmlspecialchars($k['type_kaos'] ?? '-'); ?>
                                     </div>
                                 </td>
-                                <td><?php echo htmlspecialchars($k['merek']); ?></td>
                                 <td>
                                     <span class="badge badge-info"><?php echo htmlspecialchars($k['nama_kategori'] ?? '-'); ?></span>
                                 </td>
                                 <td>
-                                    <div style="font-weight: 600;"><?php echo format_rupiah($k['harga']); ?></div>
-                                    <div style="font-size: 12px; color: #94A3B8;">Modal: <?php echo format_rupiah($k['harga_pokok']); ?></div>
+                                    <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                                        <?php foreach($colors as $c_info): 
+                                            $c_name = $c_info['warna'];
+                                            $c_hex = $c_info['warna_hex'] ?? '#000000';
+                                            $c_text = getContrastColor($c_hex);
+                                        ?>
+                                            <span style="font-size: 11px; background: <?php echo htmlspecialchars($c_hex); ?>; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.2); color: <?php echo $c_text; ?>; margin-right: 4px; margin-bottom: 4px;">
+                                                <?php echo htmlspecialchars($c_name); ?>
+                                            </span>
+                                        <?php endforeach; ?>
+                                        <span style="font-size: 11px; color: var(--primary); font-weight: 600;">(<?php echo $k['variant_count']; ?> SKU)</span>
+                                    </div>
                                 </td>
                                 <td>
                                     <div class="stock-status <?php echo $stockClass; ?>">
-                                        <?php echo $k['stok']; ?> pcs
+                                        <?php echo $k['total_stok'] ?? 0; ?> pcs
                                     </div>
-                                    <?php if ($k['stok'] < 10): ?>
-                                        <div style="font-size: 12px; color: #DC2626;">Stok menipis!</div>
-                                    <?php endif; ?>
                                 </td>
                                 <td>
                                     <div class="action-buttons">
@@ -767,9 +1056,6 @@ if ($id && $action === 'edit') {
                                         </button>
                                         <button class="btn-icon delete" onclick="deleteKaos(<?php echo $k['id']; ?>)">
                                             <i class="fas fa-trash"></i>
-                                        </button>
-                                        <button class="btn-icon view" onclick="viewKaos(<?php echo $k['id']; ?>)">
-                                            <i class="fas fa-eye"></i>
                                         </button>
                                     </div>
                                 </td>
@@ -787,127 +1073,156 @@ if ($id && $action === 'edit') {
         <div class="modal-content">
             <div class="modal-header">
                 <h3><?php echo $action === 'edit' ? 'Edit Kaos' : 'Tambah Kaos Baru'; ?></h3>
-                <button class="btn-icon" onclick="closeModal()" style="background: none; color: #94A3B8;">
+                <button class="btn-icon" onclick="closeModal()" style="background: none; color: var(--text-light);">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
             <form method="POST" action="kaos.php?action=<?php echo $action; ?><?php echo $id ? '&id=' . $id : ''; ?>" enctype="multipart/form-data">
                 <div class="modal-body">
-                    <div class="form-group">
-                        <label for="nama_kaos">Nama Kaos *</label>
-                        <input type="text" id="nama_kaos" name="nama_kaos" class="form-control" 
-                               value="<?php echo htmlspecialchars($kaos_detail['nama_kaos'] ?? ''); ?>" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="merek">Merek *</label>
-                        <input type="text" id="merek" name="merek" class="form-control" 
-                               value="<?php echo htmlspecialchars($kaos_detail['merek'] ?? ''); ?>" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="type">Type *</label>
-                        <select id="type" name="type" class="form-control" required>
-                            <option value="">Pilih Type</option>
-                            <option value="Lengan Panjang" <?php echo ($kaos_detail['type'] ?? '') === 'Lengan Panjang' ? 'selected' : ''; ?>>Lengan Panjang</option>
-                            <option value="Lengan Pendek" <?php echo ($kaos_detail['type'] ?? '') === 'Lengan Pendek' ? 'selected' : ''; ?>>Lengan Pendek</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="warna">Warna *</label>
-                        <input type="text" id="warna" name="warna" class="form-control" 
-                               value="<?php echo htmlspecialchars($kaos_detail['warna'] ?? ''); ?>" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="size">Size *</label>
-                        <select id="size" name="size" class="form-control" required>
-                            <option value="">Pilih Size</option>
-                            <option value="XS" <?php echo ($kaos_detail['size'] ?? '') === 'XS' ? 'selected' : ''; ?>>XS</option>
-                            <option value="S" <?php echo ($kaos_detail['size'] ?? '') === 'S' ? 'selected' : ''; ?>>S</option>
-                            <option value="M" <?php echo ($kaos_detail['size'] ?? '') === 'M' ? 'selected' : ''; ?>>M</option>
-                            <option value="L" <?php echo ($kaos_detail['size'] ?? '') === 'L' ? 'selected' : ''; ?>>L</option>
-                            <option value="XL" <?php echo ($kaos_detail['size'] ?? '') === 'XL' ? 'selected' : ''; ?>>XL</option>
-                            <option value="2XL" <?php echo ($kaos_detail['size'] ?? '') === '2XL' ? 'selected' : ''; ?>>2XL</option>
-                            <option value="3XL" <?php echo ($kaos_detail['size'] ?? '') === '3XL' ? 'selected' : ''; ?>>3XL</option>
-                            <option value="4XL" <?php echo ($kaos_detail['size'] ?? '') === '4XL' ? 'selected' : ''; ?>>4XL</option>
-                            <option value="5XL" <?php echo ($kaos_detail['size'] ?? '') === '5XL' ? 'selected' : ''; ?>>5XL</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="kategori_id">Kategori *</label>
-                        <select id="kategori_id" name="kategori_id" class="form-control" required>
-                            <option value="">Pilih Kategori</option>
-                            <?php foreach ($kategories as $kat): ?>
-                            <option value="<?php echo $kat['id']; ?>" 
-                                <?php echo ($kaos_detail['kategori_id'] ?? '') == $kat['id'] ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($kat['nama_kategori']); ?>
-                            </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="harga_pokok">Harga Pokok *</label>
-                        <input type="number" id="harga_pokok" name="harga_pokok" class="form-control" 
-                               value="<?php echo htmlspecialchars($kaos_detail['harga_pokok'] ?? ''); ?>" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="harga">Harga Jual *</label>
-                        <input type="number" id="harga" name="harga" class="form-control" 
-                               value="<?php echo htmlspecialchars($kaos_detail['harga'] ?? ''); ?>" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="stok">Stok *</label>
-                        <input type="number" id="stok" name="stok" class="form-control" 
-                               value="<?php echo htmlspecialchars($kaos_detail['stok'] ?? ''); ?>" required>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="foto">Foto Kaos</label>
-                        <div class="file-upload" onclick="document.getElementById('fileInput').click()">
-                            <i class="fas fa-cloud-upload-alt" style="font-size: 32px; color: #94A3B8; margin-bottom: 12px;"></i>
-                            <div style="color: #64748B;">Klik untuk upload foto</div>
-                            <div style="font-size: 12px; color: #94A3B8; margin-top: 4px;">Format: JPG, PNG. Max: 2MB</div>
-                            <input type="file" id="fileInput" name="foto" accept="image/*" onchange="previewImage(event)">
+                    <div style="display: grid; grid-template-columns: 350px 1fr; gap: 32px;">
+                        <!-- Master Information -->
+                        <div>
+                            <h4 style="margin-bottom: 16px; color: var(--primary);"><i class="fas fa-info-circle"></i> Informasi Utama</h4>
+                            <div class="form-group">
+                                <label for="nama_kaos">Nama Kaos *</label>
+                                <input type="text" id="nama_kaos" name="nama_kaos" class="form-control" 
+                                       value="<?php echo htmlspecialchars($kaos_detail['nama_kaos'] ?? ''); ?>" required>
+                            </div>
+                            
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                                <div class="form-group">
+                                    <label for="merek">Merek *</label>
+                                    <input type="text" id="merek" name="merek" class="form-control" 
+                                           value="<?php echo htmlspecialchars($kaos_detail['merek'] ?? ''); ?>" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="kategori_id">Kategori *</label>
+                                    <select id="kategori_id" name="kategori_id" class="form-control" required>
+                                        <option value="">Pilih Kategori</option>
+                                        <?php foreach ($kategories as $kat): ?>
+                                            <option value="<?php echo $kat['id']; ?>" 
+                                                <?php echo (isset($kaos_detail['kategori_id']) && $kaos_detail['kategori_id'] == $kat['id']) ? 'selected' : ''; ?>>
+                                                <?php echo htmlspecialchars($kat['nama_kategori']); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="type_kaos">Tipe Kaos</label>
+                                <select id="type_kaos" name="type_kaos" class="form-control">
+                                    <option value="Lengan Pendek" <?php echo (isset($kaos_detail['type_kaos']) && $kaos_detail['type_kaos'] == 'Lengan Pendek') ? 'selected' : ''; ?>>Lengan Pendek</option>
+                                    <option value="Lengan Panjang" <?php echo (isset($kaos_detail['type_kaos']) && $kaos_detail['type_kaos'] == 'Lengan Panjang') ? 'selected' : ''; ?>>Lengan Panjang</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="deskripsi">Deskripsi</label>
+                                <textarea id="deskripsi" name="deskripsi" class="form-control" rows="3"><?php echo htmlspecialchars($kaos_detail['deskripsi'] ?? ''); ?></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="foto_utama">Foto Utama</label>
+                                <input type="file" id="foto_utama" name="foto_utama" class="form-control">
+                                <?php if (isset($kaos_detail['foto_utama'])): ?>
+                                    <div style="margin-top: 8px; font-size: 12px; color: var(--text-light);">
+                                        File saat ini: <?php echo basename($kaos_detail['foto_utama']); ?>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
                         </div>
-                        <div class="file-preview" id="imagePreview">
-                            <?php if ($kaos_detail && $kaos_detail['foto']): ?>
-                                <img src="../<?php echo htmlspecialchars($kaos_detail['foto']); ?>" 
-                                     alt="Preview" style="max-width: 200px;">
-                            <?php endif; ?>
+
+                        <!-- Variant Management -->
+                        <div>
+                            <h4 style="margin-bottom: 16px; color: var(--primary);"><i class="fas fa-layer-group"></i> Varian Produk (Warna & Ukuran)</h4>
+                            <div style="max-height: 600px; overflow-y: auto;">
+                                <table class="variant-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Warna</th>
+                                            <th>Ukuran (Checklist)</th>
+                                            <th>Harga</th>
+                                            <th>Stok</th>
+                                            <th>Foto</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="variantContainer">
+                                        <?php 
+                                        $available_sizes = ['XS','S','M','L','XL','2XL','3XL','4XL','5XL'];
+                                        if (empty($grouped_variants)): ?>
+                                            <!-- Default empty row if adding new -->
+                                            <tr class="variant-row" data-idx="0">
+                                                <td>
+                                                    <div style="display: flex; gap: 8px; align-items: center;">
+                                                        <input type="color" name="warna_hex[0]" class="form-control" style="width: 40px; height: 38px; padding: 2px; flex-shrink: 0; border-radius: 8px;" value="#000000">
+                                                        <input type="text" name="warna[0]" class="form-control" placeholder="Nama Warna" style="width: 180px;" required>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <div style="display: flex; flex-wrap: wrap; gap: 8px; max-width: 250px;">
+                                                        <?php foreach($available_sizes as $sz): ?>
+                                                            <label style="font-size: 12px; display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                                                <input type="checkbox" name="sizes[0][]" value="<?php echo $sz; ?>" <?php echo $sz == 'L' ? 'checked' : ''; ?>> <?php echo $sz; ?>
+                                                            </label>
+                                                        <?php endforeach; ?>
+                                                    </div>
+                                                </td>
+                                                <td><input type="number" name="harga[0]" class="form-control" placeholder="Harga" style="font-weight: 700; font-size: 18px; width: 180px; color: var(--primary);"></td>
+                                                <td><input type="number" name="stok[0]" class="form-control" value="0" style="width: 70px;"></td>
+                                                <td><input type="file" name="foto_varian[0]" class="form-control" style="width: 150px;"></td>
+                                                <input type="hidden" name="harga_pokok[0]" value="0">
+                                                <td><button type="button" class="btn-icon delete" onclick="removeVariantRow(this)"><i class="fas fa-times"></i></button></td>
+                                            </tr>
+                                        <?php else: ?>
+                                            <?php $idx = 0; foreach ($grouped_variants as $gv): ?>
+                                                <tr class="variant-row" data-idx="<?php echo $idx; ?>">
+                                                    <td>
+                                                    <div style="display: flex; gap: 8px; align-items: center;">
+                                                        <input type="color" name="warna_hex[<?php echo $idx; ?>]" class="form-control" style="width: 40px; height: 38px; padding: 2px; flex-shrink: 0; border-radius: 8px;" value="<?php echo htmlspecialchars($gv['warna_hex'] ?? '#000000'); ?>">
+                                                        <input type="text" name="warna[<?php echo $idx; ?>]" class="form-control" placeholder="Warna" value="<?php echo htmlspecialchars($gv['warna']); ?>" style="width: 180px;" required>
+                                                    </div>
+                                                </td>
+                                                    <td>
+                                                        <div style="display: flex; flex-wrap: wrap; gap: 8px; max-width: 250px;">
+                                                            <?php foreach($available_sizes as $sz): ?>
+                                                                <label style="font-size: 12px; display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                                                                    <input type="checkbox" name="sizes[<?php echo $idx; ?>][]" value="<?php echo $sz; ?>" 
+                                                                           <?php echo in_array($sz, $gv['sizes']) ? 'checked' : ''; ?>> <?php echo $sz; ?>
+                                                                </label>
+                                                            <?php endforeach; ?>
+                                                        </div>
+                                                    </td>
+                                                    <td><input type="number" name="harga[<?php echo $idx; ?>]" class="form-control" placeholder="Harga" value="<?php echo round($gv['harga']); ?>" style="font-weight: 700; font-size: 18px; width: 180px; color: var(--primary);"></td>
+                                                    <td><input type="number" name="stok[<?php echo $idx; ?>]" class="form-control" value="<?php echo $gv['stok']; ?>" style="width: 70px;"></td>
+                                                    <td>
+                                                        <input type="file" name="foto_varian[<?php echo $idx; ?>]" class="form-control" style="width: 150px;">
+                                                        <?php if ($gv['foto_varian']): ?>
+                                                            <div style="font-size: 10px; color: var(--primary);">Ada foto</div>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <input type="hidden" name="harga_pokok[<?php echo $idx; ?>]" value="<?php echo round($gv['harga_pokok']); ?>">
+                                                    <td><button type="button" class="btn-icon delete" onclick="removeVariantRow(this)"><i class="fas fa-times"></i></button></td>
+                                                </tr>
+                                            <?php $idx++; endforeach; ?>
+                                        <?php endif; ?>
+                                    </tbody>
+                                </table>
+                                <button type="button" class="btn-add-variant" onclick="addVariantRow()">
+                                    <i class="fas fa-plus"></i> Tambah Varian Baru
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" onclick="closeModal()">Batal</button>
                     <button type="submit" class="btn btn-primary">
-                        <?php echo $action === 'edit' ? 'Update' : 'Simpan'; ?>
+                        <i class="fas fa-save"></i> <?php echo $action === 'edit' ? 'Update Produk' : 'Simpan Produk'; ?>
                     </button>
                 </div>
             </form>
-        </div>
-    </div>
-    
-    <!-- View Modal -->
-    <div id="viewModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Detail Kaos</h3>
-                <button class="btn-icon" onclick="closeViewModal()" style="background: none; color: #94A3B8;">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div class="modal-body" id="kaosDetail">
-                <!-- Details will be loaded here -->
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" onclick="closeViewModal()">Tutup</button>
-            </div>
         </div>
     </div>
     
@@ -921,158 +1236,105 @@ if ($id && $action === 'edit') {
         });
         
         // Modal functions
-        function openModal(action, id = '') {
-            if (action === 'add') {
-                window.location.href = 'kaos.php?action=add';
-            } else if (action === 'edit') {
-                window.location.href = `kaos.php?action=edit&id=${id}`;
+        let variantCounter = <?php echo isset($grouped_variants) ? count($grouped_variants) : 1; ?>;
+        const sizesArr = <?php echo json_encode($available_sizes); ?>;
+
+        function addVariantRow() {
+            const container = document.getElementById('variantContainer');
+            const idx = variantCounter++;
+            const row = document.createElement('tr');
+            row.className = 'variant-row';
+            row.setAttribute('data-idx', idx);
+            
+            let sizeHtml = '<div style="display: flex; flex-wrap: wrap; gap: 8px; max-width: 250px;">';
+            sizesArr.forEach(sz => {
+                sizeHtml += `
+                    <label style="font-size: 12px; display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                        <input type="checkbox" name="sizes[${idx}][]" value="${sz}" ${sz === 'L' ? 'checked' : ''}> ${sz}
+                    </label>
+                `;
+            });
+            sizeHtml += '</div>';
+
+            row.innerHTML = `
+                <td>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <input type="color" name="warna_hex[${idx}]" class="form-control" style="width: 40px; height: 38px; padding: 2px; flex-shrink: 0; border-radius: 8px;" value="#000000">
+                        <input type="text" name="warna[${idx}]" class="form-control" placeholder="Nama Warna" style="width: 180px;" required>
+                    </div>
+                </td>
+                <td>${sizeHtml}</td>
+                <td><input type="number" name="harga[${idx}]" class="form-control" placeholder="Harga" style="font-weight: 700; font-size: 18px; width: 180px; color: var(--primary);"></td>
+                <input type="hidden" name="harga_pokok[${idx}]" value="0">
+                <td><input type="number" name="stok[${idx}]" class="form-control" value="0" style="width: 70px;"></td>
+                <td><input type="file" name="foto_varian[${idx}]" class="form-control" style="width: 150px;"></td>
+                <td><button type="button" class="btn-icon delete" onclick="removeVariantRow(this)"><i class="fas fa-times"></i></button></td>
+            `;
+            container.appendChild(row);
+        }
+
+        function removeVariantRow(btn) {
+            const row = btn.closest('tr');
+            const container = document.getElementById('variantContainer');
+            if (container.querySelectorAll('.variant-row').length > 1) {
+                row.remove();
+            } else {
+                alert('Minimal harus ada satu varian produk.');
             }
         }
-        
+
+        function openModal(type) {
+            if (type === 'add') {
+                window.location.href = 'kaos.php?action=add';
+            }
+        }
+
         function closeModal() {
             window.location.href = 'kaos.php';
         }
-        
-        function closeViewModal() {
-            document.getElementById('viewModal').classList.remove('active');
-        }
-        
+
         function editKaos(id) {
-            openModal('edit', id);
+            window.location.href = 'kaos.php?action=edit&id=' + id;
         }
-        
+
         function deleteKaos(id) {
-            if (confirm('Apakah Anda yakin ingin menghapus kaos ini?')) {
-                window.location.href = `kaos.php?action=delete&id=${id}`;
+            if (confirm('Apakah Anda yakin ingin menghapus produk ini? Semua varian produk ini juga akan terhapus.')) {
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = 'kaos.php?action=delete&id=' + id;
+                document.body.appendChild(form);
+                form.submit();
             }
         }
+
+        document.getElementById('searchInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                window.location.href = 'kaos.php?search=' + encodeURIComponent(this.value);
+            }
+        });
         
-        function viewKaos(id) {
-            fetch(`get_kaos_detail.php?id=${id}`)
-                .then(response => response.json())
-                .then(data => {
-                    const detailDiv = document.getElementById('kaosDetail');
-                    const stockClass = data.stok < 10 ? 'stock-low' : (data.stok < 50 ? 'stock-medium' : 'stock-high');
-                    
-                    detailDiv.innerHTML = `
-                        <div style="display: grid; grid-template-columns: 200px 1fr; gap: 32px;">
-                            <div>
-                                ${data.foto ? 
-                                    `<img src="../${data.foto}" style="width: 100%; border-radius: 12px; border: 1px solid #E2E8F0;">` :
-                                    `<div style="width: 100%; aspect-ratio: 1; background: #F1F5F9; border-radius: 12px; display: flex; align-items: center; justify-content: center;">
-                                        <i class="fas fa-tshirt" style="font-size: 64px; color: #94A3B8;"></i>
-                                    </div>`
-                                }
-                            </div>
-                            
-                            <div>
-                                <div style="margin-bottom: 24px;">
-                                    <div style="font-size: 12px; color: #94A3B8; margin-bottom: 4px;">Kode Kaos</div>
-                                    <div style="font-weight: 600; font-size: 18px;">${data.kode_kaos}</div>
-                                </div>
-                                
-                                <div style="margin-bottom: 16px;">
-                                    <div style="font-size: 12px; color: #94A3B8; margin-bottom: 4px;">Nama Kaos</div>
-                                    <div style="font-weight: 600; font-size: 24px;">${data.nama_kaos}</div>
-                                </div>
-                                
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-                                    <div>
-                                        <div style="font-size: 12px; color: #94A3B8; margin-bottom: 4px;">Merek</div>
-                                        <div style="font-weight: 600;">${data.merek}</div>
-                                    </div>
-                                    <div>
-                                        <div style="font-size: 12px; color: #94A3B8; margin-bottom: 4px;">Kategori</div>
-                                        <span class="badge badge-info">${data.nama_kategori || '-'}</span>
-                                    </div>
-                                </div>
-                                
-                                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-                                    <div>
-                                        <div style="font-size: 12px; color: #94A3B8; margin-bottom: 4px;">Type</div>
-                                        <div>${data.type}</div>
-                                    </div>
-                                    <div>
-                                        <div style="font-size: 12px; color: #94A3B8; margin-bottom: 4px;">Warna</div>
-                                        <div>${data.warna}</div>
-                                    </div>
-                                    <div>
-                                        <div style="font-size: 12px; color: #94A3B8; margin-bottom: 4px;">Size</div>
-                                        <div>${data.size}</div>
-                                    </div>
-                                </div>
-                                
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-                                    <div>
-                                        <div style="font-size: 12px; color: #94A3B8; margin-bottom: 4px;">Harga Pokok</div>
-                                        <div style="font-weight: 600;">${formatRupiah(data.harga_pokok)}</div>
-                                    </div>
-                                    <div>
-                                        <div style="font-size: 12px; color: #94A3B8; margin-bottom: 4px;">Harga Jual</div>
-                                        <div style="font-weight: 600; font-size: 20px; color: #059669;">${formatRupiah(data.harga)}</div>
-                                    </div>
-                                </div>
-                                
-                                <div style="margin-bottom: 20px;">
-                                    <div style="font-size: 12px; color: #94A3B8; margin-bottom: 4px;">Stok</div>
-                                    <div class="stock-status ${stockClass}" style="font-size: 24px;">
-                                        ${data.stok} pcs
-                                    </div>
-                                    ${data.stok < 10 ? '<div style="font-size: 12px; color: #DC2626; margin-top: 4px;">Stok menipis!</div>' : ''}
-                                </div>
-                                
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                                    <div>
-                                        <div style="font-size: 12px; color: #94A3B8; margin-bottom: 4px;">Dibuat</div>
-                                        <div>${new Date(data.created_at).toLocaleDateString('id-ID')}</div>
-                                    </div>
-                                    <div>
-                                        <div style="font-size: 12px; color: #94A3B8; margin-bottom: 4px;">Terakhir Update</div>
-                                        <div>${data.updated_at ? new Date(data.updated_at).toLocaleDateString('id-ID') : '-'}</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                    document.getElementById('viewModal').classList.add('active');
-                });
-        }
-        
-        function previewImage(event) {
-            const preview = document.getElementById('imagePreview');
-            preview.innerHTML = '';
-            
-            if (event.target.files.length > 0) {
-                const file = event.target.files[0];
+        // Image preview for foto_utama
+        document.getElementById('foto_utama').addEventListener('change', function(e) {
+            if (e.target.files.length > 0) {
+                const file = e.target.files[0];
                 const reader = new FileReader();
                 
                 reader.onload = function(e) {
-                    const img = document.createElement('img');
+                    let img = document.getElementById('imagePreview');
+                    if (!img) { // Create if not exists (e.g., for add mode)
+                        img = document.createElement('img');
+                        img.id = 'imagePreview';
+                        img.style.maxWidth = '100px';
+                        img.style.maxHeight = '100px';
+                        img.style.marginTop = '10px';
+                        img.style.borderRadius = '8px';
+                        document.getElementById('foto_utama').parentNode.appendChild(img);
+                    }
                     img.src = e.target.result;
-                    img.style.maxWidth = '200px';
-                    img.style.borderRadius = '8px';
-                    img.style.border = '1px solid #E2E8F0';
-                    preview.appendChild(img);
+                    img.style.display = 'block';
                 }
                 
                 reader.readAsDataURL(file);
-            }
-        }
-        
-        // Format currency
-        function formatRupiah(amount) {
-            return new Intl.NumberFormat('id-ID', {
-                style: 'currency',
-                currency: 'IDR',
-                minimumFractionDigits: 0
-            }).format(amount);
-        }
-        
-        // Auto close modal on escape
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                closeModal();
-                closeViewModal();
             }
         });
     </script>

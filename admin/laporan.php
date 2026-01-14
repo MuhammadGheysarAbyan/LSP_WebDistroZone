@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once '../config/database.php';
+require_once '../includes/functions.php';
 require_once '../includes/auth_check.php';
 
 check_admin();
@@ -8,75 +9,70 @@ check_admin();
 $db = new Database();
 $conn = $db->getConnection();
 
-// Set default date range (this month)
+// Date Filter
 $start_date = $_GET['start_date'] ?? date('Y-m-01');
-$end_date = $_GET['end_date'] ?? date('Y-m-t');
+$end_date = $_GET['end_date'] ?? date('Y-m-d');
 
-// Get sales summary
+// Filter clause for queries
+$date_filter = "WHERE DATE(t.created_at) BETWEEN '$start_date' AND '$end_date'";
+
+// 1. Summary Statistics
 $query = "SELECT 
-            COUNT(*) as total_transactions,
-            SUM(grand_total) as total_revenue,
-            SUM(grand_total - shipping_cost) as total_sales
-          FROM transaksi 
-          WHERE DATE(tanggal) BETWEEN :start_date AND :end_date
-          AND status IN ('completed', 'verified')";
-$stmt = $conn->prepare($query);
-$stmt->execute(['start_date' => $start_date, 'end_date' => $end_date]);
+            COUNT(DISTINCT t.id) as total_trx,
+            SUM(t.grand_total) as total_sales,
+            SUM(d.qty) as total_items
+          FROM transaksi t
+          JOIN detail_transaksi d ON t.id = d.transaksi_id
+          $date_filter";
+$stmt = $conn->query($query);
 $summary = $stmt->fetch(PDO::FETCH_ASSOC);
 
-// Get profit summary
+// Calculate profit (Total Sales - Total Modal)
 $query = "SELECT 
-            SUM(dt.laba) as total_profit,
-            SUM(dt.harga_jual * dt.qty) as total_sales_value,
-            SUM(dt.harga_modal * dt.qty) as total_cost
-          FROM detail_transaksi dt
-          INNER JOIN transaksi t ON dt.transaksi_id = t.id
-          WHERE DATE(t.tanggal) BETWEEN :start_date AND :end_date
-          AND t.status IN ('completed', 'verified')";
-$stmt = $conn->prepare($query);
-$stmt->execute(['start_date' => $start_date, 'end_date' => $end_date]);
-$profit_summary = $stmt->fetch(PDO::FETCH_ASSOC);
+            SUM(d.qty * k.harga_pokok) as total_modal
+          FROM transaksi t
+          JOIN detail_transaksi d ON t.id = d.transaksi_id
+          JOIN kaos_varian k ON d.kaos_id = k.id
+          $date_filter";
+$stmt = $conn->query($query);
+$total_modal = $stmt->fetch(PDO::FETCH_ASSOC)['total_modal'];
+$total_profit = ($summary['total_sales'] ?? 0) - ($total_modal ?? 0);
 
-// Get top selling products
+// 2. Top Selling Products
 $query = "SELECT 
-            k.nama_kaos,
-            k.merek,
-            k.kode_kaos,
-            SUM(dt.qty) as total_sold,
-            SUM(dt.subtotal) as total_revenue,
-            SUM(dt.laba) as total_profit
-          FROM detail_transaksi dt
-          INNER JOIN kaos k ON dt.kaos_id = k.id
-          INNER JOIN transaksi t ON dt.transaksi_id = t.id
-          WHERE DATE(t.tanggal) BETWEEN :start_date AND :end_date
-          AND t.status IN ('completed', 'verified')
-          GROUP BY k.id
+            m.nama_kaos, 
+            v.kode_varian as kode_kaos,
+            SUM(d.qty) as total_sold,
+            SUM(d.subtotal) as total_revenue,
+            SUM(d.subtotal - (d.qty * v.harga_pokok)) as total_profit
+          FROM transaksi t
+          JOIN detail_transaksi d ON t.id = d.transaksi_id
+          JOIN kaos_varian v ON d.kaos_id = v.id
+          JOIN kaos_master m ON v.kaos_master_id = m.id
+          $date_filter
+          GROUP BY v.id
           ORDER BY total_sold DESC
-          LIMIT 10";
-$stmt = $conn->prepare($query);
-$stmt->execute(['start_date' => $start_date, 'end_date' => $end_date]);
+          LIMIT 5";
+$stmt = $conn->query($query);
 $top_products = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Get sales by day
+// 3. Daily Sales Chart Data
 $query = "SELECT 
-            DATE(tanggal) as date,
-            COUNT(*) as transactions,
-            SUM(grand_total) as revenue
-          FROM transaksi
-          WHERE DATE(tanggal) BETWEEN :start_date AND :end_date
-          AND status IN ('completed', 'verified')
-          GROUP BY DATE(tanggal)
-          ORDER BY date";
-$stmt = $conn->prepare($query);
-$stmt->execute(['start_date' => $start_date, 'end_date' => $end_date]);
+            DATE(t.created_at) as date,
+            SUM(t.grand_total) as daily_sales
+          FROM transaksi t
+          $date_filter
+          GROUP BY DATE(t.created_at)
+          ORDER BY date ASC";
+$stmt = $conn->query($query);
 $daily_sales = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Prepare data for chart
+// Prepare Chart Data
 $chart_labels = [];
 $chart_data = [];
 foreach ($daily_sales as $day) {
     $chart_labels[] = date('d M', strtotime($day['date']));
-    $chart_data[] = $day['revenue'];
+    $chart_data[] = $day['daily_sales'];
 }
 ?>
 
@@ -85,12 +81,21 @@ foreach ($daily_sales as $day) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Laporan - DistroZone</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <title>Laporan Penjualan - DistroZone</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        /* Same base styles as previous files */
+         :root {
+            --primary: #10B981;
+            --primary-dark: #047857;
+            --secondary: #0F766E;
+            --bg-color: #ECFDF5;
+            --text-dark: #1F2937;
+            --text-light: #64748B;
+            --white: #FFFFFF;
+        }
+        
         * {
             margin: 0;
             padding: 0;
@@ -98,9 +103,15 @@ foreach ($daily_sales as $day) {
         }
         
         body {
-            font-family: 'Inter', sans-serif;
-            background: #F8FAFC;
-            color: #334155;
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-color);
+            color: var(--text-dark);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(16, 185, 129, 0.1) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(15, 118, 110, 0.1) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.1) 0px, transparent 50%),
+                radial-gradient(at 0% 100%, rgba(15, 118, 110, 0.1) 0px, transparent 50%);
+            background-attachment: fixed;
         }
         
         .dashboard-container {
@@ -111,205 +122,146 @@ foreach ($daily_sales as $day) {
         /* Sidebar */
         .sidebar {
             width: 280px;
-            background: #1E293B;
-            color: white;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(20px);
+            border-right: 1px solid rgba(255, 255, 255, 0.5);
             padding: 24px 0;
             position: fixed;
             height: 100vh;
             overflow-y: auto;
+            z-index: 100;
         }
         
         .logo {
             padding: 0 24px 24px;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
+            border-bottom: 1px solid rgba(16, 185, 129, 0.1);
             margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .logo i {
+            font-size: 24px;
+            color: var(--primary);
         }
         
         .logo h1 {
             font-size: 24px;
             font-weight: 700;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
         
         .nav-menu {
             list-style: none;
+            padding: 0 16px;
         }
         
         .nav-item {
-            margin: 4px 12px;
+            margin-bottom: 8px;
         }
         
         .nav-link {
             display: flex;
             align-items: center;
             padding: 12px 16px;
-            color: rgba(255,255,255,0.7);
+            color: var(--text-light);
             text-decoration: none;
-            border-radius: 10px;
-            transition: all 0.3s;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            font-weight: 500;
         }
         
         .nav-link:hover, .nav-link.active {
-            background: rgba(59, 130, 246, 0.2);
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
             color: white;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
         }
         
         .nav-link i {
             width: 24px;
             margin-right: 12px;
+            font-size: 18px;
         }
         
         /* Main Content */
         .main-content {
             flex: 1;
             margin-left: 280px;
-            padding: 24px;
+            padding: 32px;
         }
         
         .top-bar {
-            background: white;
-            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
             padding: 20px 24px;
-            margin-bottom: 24px;
+            margin-bottom: 32px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+            border: 1px solid rgba(255,255,255,0.5);
         }
         
         .top-bar h2 {
             font-size: 24px;
-            color: #1E293B;
+            font-weight: 700;
+            color: var(--text-dark);
         }
         
         .user-info {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 16px;
         }
         
         .user-avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: #3B82F6;
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
             color: white;
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: 600;
+            font-size: 20px;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
         }
-        
-        /* Content Card */
-        .content-card {
-            background: white;
-            border-radius: 16px;
-            padding: 24px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            margin-bottom: 24px;
-        }
-        
-        .content-card h3 {
-            margin-bottom: 20px;
-            color: #1E293B;
-        }
-        
-        /* Date Filter */
-        .date-filter {
-            background: white;
-            border-radius: 16px;
-            padding: 20px 24px;
-            margin-bottom: 24px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        
-        .filter-form {
-            display: flex;
-            gap: 16px;
-            align-items: flex-end;
-        }
-        
-        .form-group {
-            flex: 1;
-        }
-        
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 500;
-            color: #475569;
-        }
-        
-        .form-control {
-            width: 100%;
-            padding: 12px 16px;
-            border: 1px solid #E2E8F0;
-            border-radius: 10px;
-            font-size: 14px;
-            transition: all 0.3s;
-        }
-        
-        .form-control:focus {
-            outline: none;
-            border-color: #3B82F6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-        }
-        
-        .btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 10px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .btn-primary {
-            background: #3B82F6;
-            color: white;
-        }
-        
-        .btn-primary:hover {
-            background: #2563EB;
-        }
-        
-        /* Stats Grid */
+
+        /* Stats Cards */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
             gap: 24px;
-            margin-bottom: 24px;
+            margin-bottom: 32px;
         }
-        
+
         .stat-card {
-            background: white;
-            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
             padding: 24px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            transition: transform 0.3s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+            border: 1px solid rgba(255,255,255,0.5);
+            transition: transform 0.3s ease;
         }
-        
+
         .stat-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            transform: translateY(-5px);
         }
-        
-        .stat-card-header {
+
+        .stat-header {
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            align-items: flex-start;
             margin-bottom: 16px;
         }
-        
-        .stat-card-title {
-            color: #64748B;
-            font-size: 14px;
-            font-weight: 500;
-        }
-        
-        .stat-card-icon {
+
+        .stat-icon {
             width: 48px;
             height: 48px;
             border-radius: 12px;
@@ -319,94 +271,139 @@ foreach ($daily_sales as $day) {
             font-size: 24px;
         }
         
-        .icon-blue { background: #DBEAFE; color: #3B82F6; }
-        .icon-green { background: #D1FAE5; color: #10B981; }
-        .icon-orange { background: #FEF3C7; color: #F59E0B; }
-        .icon-purple { background: #E9D5FF; color: #8B5CF6; }
-        
-        .stat-card-value {
-            font-size: 32px;
+        .stat-title {
+            color: var(--text-light);
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .stat-value {
+            font-size: 28px;
             font-weight: 700;
-            color: #1E293B;
-            margin-bottom: 4px;
+            color: var(--text-dark);
+        }
+
+        /* Filter Section */
+        .filter-section {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 24px;
+            margin-bottom: 32px;
+            border: 1px solid rgba(255,255,255,0.5);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
         }
         
-        /* Chart Container */
+        .date-filter {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        
+        .date-input {
+            padding: 10px 16px;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            border-radius: 10px;
+            font-family: 'Outfit', sans-serif;
+            background: white;
+            color: var(--text-dark);
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            font-family: 'Outfit', sans-serif;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(16, 185, 129, 0.3);
+        }
+        
+        .btn-outline {
+            background: white;
+            color: var(--primary);
+            border: 1px solid var(--primary);
+        }
+        
+        .btn-outline:hover {
+            background: rgba(16, 185, 129, 0.05);
+        }
+        
+        /* Charts & Tables */
         .chart-container {
-            height: 300px;
-            margin-bottom: 24px;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 24px;
+            margin-bottom: 32px;
+            border: 1px solid rgba(255,255,255,0.5);
         }
         
         /* Table */
         table {
             width: 100%;
-            border-collapse: collapse;
-        }
-        
-        thead {
-            background: #F8FAFC;
+            border-collapse: separate;
+            border-spacing: 0;
         }
         
         th {
-            padding: 12px;
+            padding: 16px;
             text-align: left;
             font-weight: 600;
-            color: #64748B;
+            color: var(--text-light);
             font-size: 14px;
-            border-bottom: 2px solid #E2E8F0;
+            border-bottom: 2px solid rgba(16, 185, 129, 0.1);
         }
         
         td {
-            padding: 16px 12px;
-            border-bottom: 1px solid #F1F5F9;
+            padding: 16px;
+            border-bottom: 1px solid rgba(16, 185, 129, 0.1);
+            vertical-align: middle;
+        }
+        
+        tbody tr:last-child td {
+            border-bottom: none;
         }
         
         tbody tr:hover {
-            background: #F8FAFC;
+            background-color: rgba(16, 185, 129, 0.05);
         }
         
-        /* Badge */
-        .badge {
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        
-        .badge-success {
-            background: #D1FAE5;
-            color: #059669;
-        }
-        
-        .badge-warning {
-            background: #FEF3C7;
-            color: #D97706;
-        }
-        
-        /* Export Buttons */
-        .export-buttons {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 24px;
-            justify-content: flex-end;
-        }
-        
-        .btn-success {
-            background: #10B981;
-            color: white;
-        }
-        
-        .btn-success:hover {
-            background: #059669;
-        }
-        
-        .btn-danger {
-            background: #EF4444;
-            color: white;
-        }
-        
-        .btn-danger:hover {
-            background: #DC2626;
+        /* Print Styles */
+        @media print {
+            .sidebar, .top-bar, .filter-section, .no-print {
+                display: none !important;
+            }
+            .main-content {
+                margin-left: 0;
+                padding: 0;
+            }
+            body {
+                background: white;
+            }
+            .stat-card, .chart-container {
+                box-shadow: none;
+                border: 1px solid #ddd;
+                break-inside: avoid;
+            }
         }
     </style>
 </head>
@@ -415,6 +412,7 @@ foreach ($daily_sales as $day) {
         <!-- Sidebar -->
         <aside class="sidebar">
             <div class="logo">
+                <i class="fas fa-layer-group"></i>
                 <h1>DistroZone</h1>
             </div>
             
@@ -435,12 +433,6 @@ foreach ($daily_sales as $day) {
                     <a href="kaos.php" class="nav-link">
                         <i class="fas fa-tshirt"></i>
                         Kelola Kaos
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="verifikasi.php" class="nav-link">
-                        <i class="fas fa-check-circle"></i>
-                        Verifikasi Pembayaran
                     </a>
                 </li>
                 <li class="nav-item">
@@ -474,217 +466,115 @@ foreach ($daily_sales as $day) {
                     </div>
                     <div>
                         <div style="font-weight: 600;"><?php echo $_SESSION['nama']; ?></div>
-                        <div style="font-size: 12px; color: #64748B;">Administrator</div>
+                        <div style="font-size: 12px; color: var(--text-light);">Administrator</div>
                     </div>
                 </div>
             </div>
             
-            <!-- Date Filter -->
-            <div class="date-filter">
-                <form method="GET" class="filter-form">
-                    <div class="form-group">
-                        <label for="start_date">Tanggal Mulai</label>
-                        <input type="date" id="start_date" name="start_date" class="form-control" 
-                               value="<?php echo htmlspecialchars($start_date); ?>">
+            <!-- Filter Section -->
+            <form class="filter-section">
+                <div class="date-filter">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="color: var(--text-light); font-size: 14px;">Dari:</span>
+                        <input type="date" name="start_date" value="<?php echo $start_date; ?>" class="date-input">
                     </div>
-                    <div class="form-group">
-                        <label for="end_date">Tanggal Selesai</label>
-                        <input type="date" id="end_date" name="end_date" class="form-control" 
-                               value="<?php echo htmlspecialchars($end_date); ?>">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="color: var(--text-light); font-size: 14px;">Sampai:</span>
+                        <input type="date" name="end_date" value="<?php echo $end_date; ?>" class="date-input">
                     </div>
-                    <div class="form-group" style="max-width: 200px;">
-                        <button type="submit" class="btn btn-primary" style="width: 100%;">
-                            <i class="fas fa-filter"></i>
-                            Filter
-                        </button>
-                    </div>
-                </form>
-            </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-filter"></i> Filter
+                    </button>
+                </div>
+                
+                <div class="no-print">
+                    <button type="button" class="btn btn-outline" onclick="window.print()">
+                        <i class="fas fa-print"></i> Cetak Laporan
+                    </button>
+                    <!-- <button type="button" class="btn btn-outline" style="margin-left: 8px;">
+                        <i class="fas fa-file-excel"></i> Export Excel
+                    </button> -->
+                </div>
+            </form>
             
-            <!-- Export Buttons -->
-            <div class="export-buttons">
-                <button class="btn btn-success" onclick="exportPDF()">
-                    <i class="fas fa-file-pdf"></i>
-                    Export PDF
-                </button>
-                <button class="btn btn-primary" onclick="exportExcel()">
-                    <i class="fas fa-file-excel"></i>
-                    Export Excel
-                </button>
-            </div>
-            
-            <!-- Summary Stats -->
+            <!-- Stats Grid -->
             <div class="stats-grid">
                 <div class="stat-card">
-                    <div class="stat-card-header">
-                        <div>
-                            <div class="stat-card-title">Total Transaksi</div>
-                        </div>
-                        <div class="stat-card-icon icon-blue">
+                    <div class="stat-header">
+                        <div class="stat-icon" style="background: rgba(16, 185, 129, 0.1); color: #10B981;">
                             <i class="fas fa-shopping-cart"></i>
                         </div>
                     </div>
-                    <div class="stat-card-value"><?php echo number_format($summary['total_transactions'] ?? 0); ?></div>
-                    <div style="font-size: 12px; color: #64748B;">
-                        Periode: <?php echo date('d M Y', strtotime($start_date)); ?> - <?php echo date('d M Y', strtotime($end_date)); ?>
-                    </div>
+                    <div class="stat-title">Total Transaksi</div>
+                    <div class="stat-value"><?php echo number_format($summary['total_trx'] ?? 0); ?></div>
                 </div>
                 
                 <div class="stat-card">
-                    <div class="stat-card-header">
-                        <div>
-                            <div class="stat-card-title">Total Penjualan</div>
+                    <div class="stat-header">
+                        <div class="stat-icon" style="background: rgba(59, 130, 246, 0.1); color: #3B82F6;">
+                            <i class="fas fa-box"></i>
                         </div>
-                        <div class="stat-card-icon icon-green">
+                    </div>
+                    <div class="stat-title">Produk Terjual</div>
+                    <div class="stat-value"><?php echo number_format($summary['total_items'] ?? 0); ?></div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <div class="stat-icon" style="background: rgba(245, 158, 11, 0.1); color: #F59E0B;">
                             <i class="fas fa-money-bill-wave"></i>
                         </div>
                     </div>
-                    <div class="stat-card-value"><?php echo format_rupiah($summary['total_sales'] ?? 0); ?></div>
-                    <div style="font-size: 12px; color: #64748B;">Net sales (excluding shipping)</div>
+                    <div class="stat-title">Total Pendapatan</div>
+                    <div class="stat-value" style="font-size: 24px;"><?php echo format_rupiah($summary['total_sales'] ?? 0); ?></div>
                 </div>
                 
                 <div class="stat-card">
-                    <div class="stat-card-header">
-                        <div>
-                            <div class="stat-card-title">Total Revenue</div>
-                        </div>
-                        <div class="stat-card-icon icon-orange">
+                    <div class="stat-header">
+                        <div class="stat-icon" style="background: rgba(139, 92, 246, 0.1); color: #8B5CF6;">
                             <i class="fas fa-chart-line"></i>
                         </div>
                     </div>
-                    <div class="stat-card-value"><?php echo format_rupiah($summary['total_revenue'] ?? 0); ?></div>
-                    <div style="font-size: 12px; color: #64748B;">Including shipping costs</div>
-                </div>
-                
-                <div class="stat-card">
-                    <div class="stat-card-header">
-                        <div>
-                            <div class="stat-card-title">Total Laba</div>
-                        </div>
-                        <div class="stat-card-icon icon-purple">
-                            <i class="fas fa-hand-holding-usd"></i>
-                        </div>
-                    </div>
-                    <div class="stat-card-value"><?php echo format_rupiah($profit_summary['total_profit'] ?? 0); ?></div>
-                    <div style="font-size: 12px; color: #64748B;">
-                        Profit margin: 
-                        <?php 
-                            if ($profit_summary['total_sales_value'] > 0) {
-                                $margin = ($profit_summary['total_profit'] / $profit_summary['total_sales_value']) * 100;
-                                echo number_format($margin, 1) . '%';
-                            } else {
-                                echo '0%';
-                            }
-                        ?>
-                    </div>
+                    <div class="stat-title">Total Keuntungan</div>
+                    <div class="stat-value" style="font-size: 24px;"><?php echo format_rupiah($total_profit); ?></div>
                 </div>
             </div>
             
-            <!-- Sales Chart -->
-            <div class="content-card">
-                <h3>Grafik Penjualan Harian</h3>
-                <div class="chart-container">
-                    <canvas id="salesChart"></canvas>
-                </div>
+            <!-- Charts Section -->
+            <div class="chart-container">
+                <h3 style="margin-bottom: 24px; color: var(--text-dark);">Grafik Penjualan Harian</h3>
+                <canvas id="salesChart" height="100"></canvas>
             </div>
             
-            <!-- Top Products -->
-            <div class="content-card">
-                <h3>Produk Terlaris</h3>
+            <!-- Top Products Table -->
+            <div class="chart-container">
+                <h3 style="margin-bottom: 24px; color: var(--text-dark);">5 Produk Terlaris</h3>
                 <table>
                     <thead>
                         <tr>
-                            <th>Produk</th>
                             <th>Kode</th>
+                            <th>Nama Produk</th>
                             <th>Terjual</th>
-                            <th>Revenue</th>
-                            <th>Laba</th>
+                            <th>Pendapatan</th>
+                            <th>Keuntungan</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if (empty($top_products)): ?>
                             <tr>
-                                <td colspan="5" style="text-align: center; padding: 40px; color: #94A3B8;">
-                                    <i class="fas fa-chart-bar" style="font-size: 48px; margin-bottom: 16px; display: block;"></i>
-                                    Tidak ada data penjualan pada periode ini
-                                </td>
+                                <td colspan="5" style="text-align: center; padding: 20px; color: var(--text-light);">Belum ada data penjualan</td>
                             </tr>
                         <?php else: ?>
                             <?php foreach ($top_products as $product): ?>
                             <tr>
-                                <td>
-                                    <div style="font-weight: 600;"><?php echo htmlspecialchars($product['nama_kaos']); ?></div>
-                                    <div style="font-size: 12px; color: #94A3B8;"><?php echo htmlspecialchars($product['merek']); ?></div>
-                                </td>
                                 <td><?php echo htmlspecialchars($product['kode_kaos']); ?></td>
-                                <td>
-                                    <div style="font-weight: 600;"><?php echo number_format($product['total_sold']); ?></div>
-                                    <div style="font-size: 12px; color: #94A3B8;">pcs</div>
-                                </td>
+                                <td style="font-weight: 500;"><?php echo htmlspecialchars($product['nama_kaos']); ?></td>
+                                <td><?php echo number_format($product['total_sold']); ?> pcs</td>
                                 <td><?php echo format_rupiah($product['total_revenue']); ?></td>
-                                <td>
-                                    <div style="font-weight: 600; color: #059669;"><?php echo format_rupiah($product['total_profit']); ?></div>
-                                    <div style="font-size: 12px; color: #94A3B8;">
-                                        <?php 
-                                            if ($product['total_revenue'] > 0) {
-                                                $margin = ($product['total_profit'] / $product['total_revenue']) * 100;
-                                                echo number_format($margin, 1) . '% margin';
-                                            }
-                                        ?>
-                                    </div>
-                                </td>
+                                <td style="font-weight: 600; color: #10B981;"><?php echo format_rupiah($product['total_profit']); ?></td>
                             </tr>
                             <?php endforeach; ?>
                         <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
-            
-            <!-- Profit Details -->
-            <div class="content-card">
-                <h3>Detail Laba Rugi</h3>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Keterangan</th>
-                            <th>Jumlah</th>
-                            <th>Persentase</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>Total Nilai Penjualan</td>
-                            <td><?php echo format_rupiah($profit_summary['total_sales_value'] ?? 0); ?></td>
-                            <td>100%</td>
-                        </tr>
-                        <tr>
-                            <td>Total Biaya Pokok</td>
-                            <td><?php echo format_rupiah($profit_summary['total_cost'] ?? 0); ?></td>
-                            <td>
-                                <?php 
-                                    if ($profit_summary['total_sales_value'] > 0) {
-                                        $cost_percentage = ($profit_summary['total_cost'] / $profit_summary['total_sales_value']) * 100;
-                                        echo number_format($cost_percentage, 1) . '%';
-                                    } else {
-                                        echo '0%';
-                                    }
-                                ?>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td>Total Laba Kotor</td>
-                            <td style="font-weight: 600; color: #059669;"><?php echo format_rupiah($profit_summary['total_profit'] ?? 0); ?></td>
-                            <td style="font-weight: 600; color: #059669;">
-                                <?php 
-                                    if ($profit_summary['total_sales_value'] > 0) {
-                                        $profit_percentage = ($profit_summary['total_profit'] / $profit_summary['total_sales_value']) * 100;
-                                        echo number_format($profit_percentage, 1) . '%';
-                                    } else {
-                                        echo '0%';
-                                    }
-                                ?>
-                            </td>
-                        </tr>
                     </tbody>
                 </table>
             </div>
@@ -692,42 +582,50 @@ foreach ($daily_sales as $day) {
     </div>
     
     <script>
-        // Initialize Sales Chart
+        // Sales Chart
         const ctx = document.getElementById('salesChart').getContext('2d');
-        const salesChart = new Chart(ctx, {
+        new Chart(ctx, {
             type: 'line',
             data: {
                 labels: <?php echo json_encode($chart_labels); ?>,
                 datasets: [{
-                    label: 'Penjualan (Rp)',
+                    label: 'Penjualan',
                     data: <?php echo json_encode($chart_data); ?>,
-                    borderColor: '#3B82F6',
-                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    borderColor: '#10B981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
                     borderWidth: 2,
                     fill: true,
-                    tension: 0.4
+                    tension: 0.4,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#fff',
+                    pointBorderColor: '#10B981',
+                    pointHoverRadius: 6
                 }]
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: false,
                 plugins: {
                     legend: {
-                        display: true,
-                        position: 'top'
+                        display: false
                     },
                     tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                        titleColor: '#1F2937',
+                        bodyColor: '#10B981',
+                        borderColor: '#E2E8F0',
+                        borderWidth: 1,
+                        padding: 12,
                         callbacks: {
                             label: function(context) {
                                 let label = context.dataset.label || '';
                                 if (label) {
                                     label += ': ';
                                 }
-                                label += new Intl.NumberFormat('id-ID', {
-                                    style: 'currency',
-                                    currency: 'IDR',
-                                    minimumFractionDigits: 0
-                                }).format(context.parsed.y);
+                                if (context.parsed.y !== null) {
+                                    label += new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(context.parsed.y);
+                                }
                                 return label;
                             }
                         }
@@ -736,35 +634,23 @@ foreach ($daily_sales as $day) {
                 scales: {
                     y: {
                         beginAtZero: true,
+                        grid: {
+                            borderDash: [2, 4],
+                            color: '#E2E8F0'
+                        },
                         ticks: {
                             callback: function(value) {
-                                if (value >= 1000000) {
-                                    return 'Rp' + (value / 1000000).toFixed(1) + 'jt';
-                                }
-                                return 'Rp' + value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+                                return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumSignificantDigits: 3 }).format(value);
                             }
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false
                         }
                     }
                 }
             }
-        });
-        
-        // Export functions
-        function exportPDF() {
-            alert('Fitur export PDF akan segera hadir!');
-            // In real implementation, this would generate and download PDF
-            // window.location.href = 'export_pdf.php?start_date=<?php echo $start_date; ?>&end_date=<?php echo $end_date; ?>';
-        }
-        
-        function exportExcel() {
-            alert('Fitur export Excel akan segera hadir!');
-            // In real implementation, this would generate and download Excel
-            // window.location.href = 'export_excel.php?start_date=<?php echo $start_date; ?>&end_date=<?php echo $end_date; ?>';
-        }
-        
-        // Auto update chart on filter
-        document.querySelector('.filter-form').addEventListener('submit', function(e) {
-            // Chart will update when page reloads with new data
         });
     </script>
 </body>

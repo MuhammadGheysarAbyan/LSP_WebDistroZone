@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once '../config/database.php';
+require_once '../includes/functions.php';
 require_once '../includes/auth_check.php';
 
 check_customer();
@@ -9,9 +10,10 @@ $db = new Database();
 $conn = $db->getConnection();
 
 // Get cart items
-$query = "SELECT c.*, k.nama_kaos, k.harga, k.foto, k.stok 
+$query = "SELECT c.*, k.nama_kaos, v.harga, v.foto_varian as foto, v.stok, v.size, v.warna 
           FROM cart c 
-          INNER JOIN kaos k ON c.kaos_id = k.id 
+          INNER JOIN kaos_varian v ON c.kaos_id = v.id 
+          INNER JOIN kaos_master k ON v.kaos_master_id = k.id 
           WHERE c.customer_id = :customer_id";
 $stmt = $conn->prepare($query);
 $stmt->execute([':customer_id' => $_SESSION['user_id']]);
@@ -73,7 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             // Insert transaction details and calculate profit
             foreach ($cart_items as $item) {
                 // Get product cost
-                $query_kaos = "SELECT harga_pokok FROM kaos WHERE id = :id";
+                $query_kaos = "SELECT harga_pokok FROM kaos_varian WHERE id = :id";
                 $stmt_kaos = $conn->prepare($query_kaos);
                 $stmt_kaos->execute([':id' => $item['kaos_id']]);
                 $kaos = $stmt_kaos->fetch(PDO::FETCH_ASSOC);
@@ -98,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 ]);
                 
                 // Update stock
-                $query_update = "UPDATE kaos SET stok = stok - :qty WHERE id = :id";
+                $query_update = "UPDATE kaos_varian SET stok = stok - :qty WHERE id = :id";
                 $stmt_update = $conn->prepare($query_update);
                 $stmt_update->execute([':qty' => $item['qty'], ':id' => $item['kaos_id']]);
             }
@@ -128,7 +130,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Checkout - DistroZone</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * {
@@ -137,16 +139,36 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             box-sizing: border-box;
         }
         
+        :root {
+            --primary: #10B981; /* Emerald 500 */
+            --secondary: #0F766E; /* Teal 700 */
+            --dark: #1F2937;
+        }
+        
         body {
-            font-family: 'Inter', sans-serif;
-            background: #F8FAFC;
+            font-family: 'Outfit', sans-serif;
+            background-color: #ECFDF5;
+             background-image: 
+                radial-gradient(at 0% 0%, hsla(160,100%,25%,0.05) 0, transparent 50%), 
+                radial-gradient(at 50% 0%, hsla(180,100%,30%,0.05) 0, transparent 50%), 
+                radial-gradient(at 100% 0%, hsla(150,100%,30%,0.05) 0, transparent 50%);
+            background-size: 200% 200%;
+            animation: gradientBG 15s ease infinite;
             color: #334155;
+            min-height: 100vh;
+        }
+        
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
         }
         
         .navbar {
-            background: white;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            padding: 16px 0;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            padding: 20px 0;
             position: sticky;
             top: 0;
             z-index: 100;
@@ -163,8 +185,24 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         
         .logo {
             font-size: 24px;
-            font-weight: 700;
-            color: #1E293B;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+         .btn-back {
+            color: #64748B;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+            transition: color 0.3s;
+        }
+        
+        .btn-back:hover {
+            color: var(--primary);
         }
         
         .container {
@@ -176,28 +214,30 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         .checkout-grid {
             display: grid;
             grid-template-columns: 2fr 1fr;
-            gap: 24px;
+            gap: 40px;
         }
         
         .checkout-card {
-            background: white;
-            border-radius: 16px;
-            padding: 32px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);
+            border: 1px solid rgba(255,255,255,0.6);
         }
         
         .card-title {
             font-size: 20px;
             font-weight: 700;
             margin-bottom: 24px;
-            color: #1E293B;
+            color: var(--dark);
         }
         
         .cart-item {
             display: flex;
             gap: 16px;
             padding: 16px 0;
-            border-bottom: 1px solid #F1F5F9;
+            border-bottom: 1px solid #E5E7EB;
         }
         
         .cart-item:last-child {
@@ -217,7 +257,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         
         .item-name {
             font-weight: 600;
-            color: #1E293B;
+            color: var(--dark);
             margin-bottom: 4px;
         }
         
@@ -229,8 +269,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         
         .item-price {
             font-size: 16px;
-            font-weight: 600;
-            color: #3B82F6;
+            font-weight: 700;
+            color: var(--primary);
         }
         
         .form-group {
@@ -242,15 +282,26 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             margin-bottom: 8px;
             font-weight: 600;
             color: #334155;
+            font-size: 14px;
         }
         
         .form-group select,
         .form-group input {
             width: 100%;
             padding: 12px 16px;
-            border: 2px solid #E2E8F0;
-            border-radius: 10px;
+            border: 2px solid #E5E7EB;
+            border-radius: 12px;
             font-size: 15px;
+            font-family: inherit;
+            background: white;
+            transition: all 0.3s;
+        }
+        
+        .form-group select:focus,
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
         }
         
         .summary-row {
@@ -258,21 +309,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             justify-content: space-between;
             padding: 12px 0;
             font-size: 15px;
+            color: #475569;
         }
         
         .summary-row.total {
-            border-top: 2px solid #E2E8F0;
+            border-top: 2px dashed #E2E8F0;
             margin-top: 16px;
             padding-top: 16px;
             font-size: 20px;
-            font-weight: 700;
-            color: #1E293B;
+            font-weight: 800;
+            color: var(--dark);
         }
         
         .btn-checkout {
             width: 100%;
             padding: 16px;
-            background: #3B82F6;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
             color: white;
             border: none;
             border-radius: 12px;
@@ -281,28 +333,35 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             cursor: pointer;
             transition: all 0.3s;
             margin-top: 24px;
+            box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
         }
         
         .btn-checkout:hover {
-            background: #2563EB;
             transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.4);
         }
         
         .alert-error {
-            background: #FEE2E2;
+            background: #FEF2F2;
             color: #991B1B;
             padding: 16px;
             border-radius: 12px;
             margin-bottom: 24px;
+            border: 1px solid #FEE2E2;
         }
         
         .shipping-info {
-            background: #DBEAFE;
+            background: rgba(79, 70, 229, 0.05);
             padding: 16px;
             border-radius: 12px;
             margin-top: 16px;
             font-size: 14px;
-            color: #1E40AF;
+            color: var(--primary);
+            border: 1px solid rgba(79, 70, 229, 0.1);
         }
         
         @media (max-width: 768px) {
@@ -316,7 +375,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <nav class="navbar">
         <div class="navbar-content">
             <div class="logo">DistroZone</div>
-            <div>Checkout</div>
+             <a href="cart.php" class="btn-back">
+                <i class="fas fa-arrow-left"></i> Kembali ke Keranjang
+            </a>
         </div>
     </nav>
     
@@ -330,7 +391,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 <i class="fas fa-shopping-cart" style="font-size: 64px; color: #CBD5E1; margin-bottom: 16px;"></i>
                 <h3 style="margin-bottom: 8px;">Keranjang Kosong</h3>
                 <p style="color: #64748B;">Yuk mulai belanja!</p>
-                <a href="shop.php" style="display: inline-block; margin-top: 24px; padding: 12px 24px; background: #3B82F6; color: white; text-decoration: none; border-radius: 10px;">Lihat Produk</a>
+                <a href="shop.php" class="btn-checkout" style="width: fit-content; margin: 24px auto 0; padding: 12px 32px;">Lihat Produk</a>
             </div>
         <?php else: ?>
         
@@ -375,23 +436,24 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         <div class="form-group">
                             <label>Metode Pembayaran</label>
                             <select name="payment_method" required>
-                                <option value="transfer">Transfer Bank</option>
+                                <option value="transfer">Transfer Bank (BCA / Mandiri)</option>
+                                <option value="qris">QRIS (GoPay / OVO / Dana)</option>
                                 <option value="cod">Cash on Delivery (COD)</option>
                             </select>
                         </div>
                         
                         <div class="shipping-info">
-                            <strong>Info Pengiriman:</strong><br>
-                            Berat: <?php echo $total_weight; ?> kg (<?php echo array_sum(array_column($cart_items, 'qty')); ?> pcs kaos)<br>
-                            <small>*1 kg = 3 kaos</small>
+                            <strong><i class="fas fa-info-circle"></i> Info Pengiriman:</strong><br>
+                            Berat Total: <?php echo $total_weight; ?> kg (<?php echo array_sum(array_column($cart_items, 'qty')); ?> items)<br>
+                            <small class="opacity-75">*Hitungan volumetrik: 1 kg muat hingga 3 kaos</small>
                         </div>
                     </div>
                 </div>
                 
                 <!-- Right: Order Summary -->
                 <div>
-                    <div class="checkout-card">
-                        <h2 class="card-title">Ringkasan Pesanan</h2>
+                    <div class="checkout-card" style="position: sticky; top: 120px;">
+                        <h2 class="card-title">Ringkasan Pembayaran</h2>
                         
                         <div class="summary-row">
                             <span>Subtotal</span>
@@ -404,8 +466,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         </div>
                         
                         <div class="summary-row total">
-                            <span>Total</span>
-                            <span id="grandTotal"><?php echo format_rupiah($subtotal); ?></span>
+                            <span>Total Tagihan</span>
+                            <span id="grandTotal" style="color: var(--primary);"><?php echo format_rupiah($subtotal); ?></span>
                         </div>
                         
                         <button type="submit" class="btn-checkout">
@@ -438,6 +500,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 
                 document.getElementById('shipping').textContent = formatRupiah(shippingCost);
                 document.getElementById('grandTotal').textContent = formatRupiah(grandTotal);
+            } else {
+                document.getElementById('shipping').textContent = 'Rp 0';
+                document.getElementById('grandTotal').textContent = formatRupiah(subtotal);
             }
         }
         

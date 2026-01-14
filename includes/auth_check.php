@@ -15,13 +15,7 @@ function check_auth($required_role = null) {
     return true;
 }
 
-function is_logged_in() {
-    return isset($_SESSION['user_id']);
-}
-
-function get_user_role() {
-    return isset($_SESSION['role']) ? $_SESSION['role'] : null;
-}
+// function is_logged_in() removed to avoid conflict with functions.php
 
 function check_admin() {
     check_auth('admin');
