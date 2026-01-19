@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once '../config/session.php';
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 require_once '../includes/auth_check.php';
@@ -13,8 +13,8 @@ $conn = $db->getConnection();
 $start_date = $_GET['start_date'] ?? date('Y-m-01');
 $end_date = $_GET['end_date'] ?? date('Y-m-d');
 
-// Filter clause for queries
-$date_filter = "WHERE DATE(t.created_at) BETWEEN '$start_date' AND '$end_date'";
+// Filter clause for queries - only include verified/completed transactions
+$date_filter = "WHERE DATE(t.created_at) BETWEEN '$start_date' AND '$end_date' AND t.status IN ('verified', 'completed')";
 
 // 1. Summary Statistics
 $query = "SELECT 

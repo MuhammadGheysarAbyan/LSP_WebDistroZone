@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once '../config/session.php';
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 require_once '../includes/auth_check.php';
@@ -9,10 +9,49 @@ check_kasir();
 $db = new Database();
 $conn = $db->getConnection();
 
+// Auto-cancel orders pending for more than 24 hours without verification
+$check_auto_cancel = "SELECT id FROM transaksi 
+                      WHERE status = 'pending' 
+                      AND created_at < DATE_SUB(NOW(), INTERVAL 24 HOUR)";
+$res_auto_cancel = $conn->query($check_auto_cancel);
+$orders_to_cancel = $res_auto_cancel->fetchAll(PDO::FETCH_ASSOC);
+
+foreach ($orders_to_cancel as $trx_cancel) {
+    $conn->beginTransaction();
+    try {
+        $tid = $trx_cancel['id'];
+        
+        // Return stock
+        $sql_items = "SELECT kaos_id, qty FROM detail_transaksi WHERE transaksi_id = :id";
+        $stmt_items = $conn->prepare($sql_items);
+        $stmt_items->execute(['id' => $tid]);
+        $items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
+        
+        foreach ($items as $item) {
+            $sql_stock = "UPDATE kaos_varian SET stok = stok + :qty WHERE id = :id";
+            $stmt_stock = $conn->prepare($sql_stock);
+            $stmt_stock->execute(['qty' => $item['qty'], 'id' => $item['kaos_id']]);
+        }
+        
+        // Set status to cancelled
+        $sql_upd = "UPDATE transaksi SET status = 'cancelled', 
+                    cancelled_by = 'system', 
+                    cancel_reason = 'Batal otomatis (melebihi 24 jam)' 
+                    WHERE id = :id";
+        $stmt_upd = $conn->prepare($sql_upd);
+        $stmt_upd->execute(['id' => $tid]);
+        
+        $conn->commit();
+    } catch (Exception $e) {
+        $conn->rollBack();
+    }
+}
+
 // Handle verification actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     $payment_id = $_POST['payment_id'] ?? '';
+    $transaksi_id = $_POST['transaksi_id'] ?? '';
     
     if ($action === 'verify') {
         $sql = "UPDATE payment_proof SET status = 'verified', 
@@ -36,17 +75,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
     elseif ($action === 'reject') {
-        $sql = "UPDATE payment_proof SET status = 'rejected', 
-                verified_by = :verified_by, verified_at = NOW() 
-                WHERE id = :id";
+        // Delete the rejected payment proof so customer can upload again
+        $sql = "DELETE FROM payment_proof WHERE id = :id";
         $stmt = $conn->prepare($sql);
-        $stmt->execute([
-            'verified_by' => $_SESSION['user_id'],
-            'id' => $payment_id
-        ]);
+        $stmt->execute(['id' => $payment_id]);
         
-        header('Location: verifikasi.php?success=Pembayaran berhasil ditolak');
+        // Transaction stays in 'pending' status so customer can re-upload
+        
+        header('Location: verifikasi.php?success=Bukti pembayaran ditolak. Customer dapat upload ulang.');
         exit;
+    }
+    elseif ($action === 'cancel_order') {
+        $conn->beginTransaction();
+        try {
+            // Cancel order
+            $sql = "UPDATE transaksi SET status = 'cancelled', 
+                    cancelled_by = 'kasir', 
+                    cancel_reason = 'Ditolak oleh kasir/admin' 
+                    WHERE id = :id";
+            $stmt = $conn->prepare($sql);
+            $stmt->execute(['id' => $transaksi_id]);
+            
+            // Return stock
+            $sql_items = "SELECT kaos_id, qty FROM detail_transaksi WHERE transaksi_id = :id";
+            $stmt_items = $conn->prepare($sql_items);
+            $stmt_items->execute(['id' => $transaksi_id]);
+            $items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
+            
+            foreach ($items as $item) {
+                $sql_stock = "UPDATE kaos_varian SET stok = stok + :qty WHERE id = :id";
+                $stmt_stock = $conn->prepare($sql_stock);
+                $stmt_stock->execute(['qty' => $item['qty'], 'id' => $item['kaos_id']]);
+            }
+            
+            $conn->commit();
+            header('Location: verifikasi.php?success=Pesanan berhasil ditolak dan stok dikembalikan');
+            exit;
+        } catch (Exception $e) {
+            $conn->rollBack();
+            header('Location: verifikasi.php?error=Gagal membatalkan pesanan');
+            exit;
+        }
     }
 }
 
@@ -63,6 +132,17 @@ $query = "SELECT p.*, t.kode_transaksi, t.grand_total,
 $stmt = $conn->query($query);
 $pending_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Get pending transactions WITHOUT payment proof (waiting for customer to upload)
+$query = "SELECT t.*, u.nama as customer_name, u.email as customer_email,
+                 TIMESTAMPDIFF(HOUR, t.created_at, NOW()) as hours_pending
+          FROM transaksi t
+          LEFT JOIN users u ON t.customer_id = u.id
+          LEFT JOIN payment_proof p ON t.id = p.transaksi_id
+          WHERE t.status = 'pending' AND p.id IS NULL
+          ORDER BY t.created_at DESC";
+$stmt = $conn->query($query);
+$pending_no_proof = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
 // Get verified payments for history
 $query = "SELECT p.*, t.kode_transaksi, t.grand_total, 
                  u.nama as customer_name, u.email as customer_email,
@@ -76,6 +156,16 @@ $query = "SELECT p.*, t.kode_transaksi, t.grand_total,
           LIMIT 10";
 $stmt = $conn->query($query);
 $verified_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Get cancelled orders for history
+$query = "SELECT t.*, u.nama as customer_name, u.email as customer_email
+          FROM transaksi t
+          LEFT JOIN users u ON t.customer_id = u.id
+          WHERE t.status = 'cancelled'
+          ORDER BY t.created_at DESC
+          LIMIT 10";
+$stmt = $conn->query($query);
+$cancelled_orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <!DOCTYPE html>
@@ -591,6 +681,67 @@ $verified_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 </div>
             <?php endif; ?>
             
+            <!-- Pending Orders WITHOUT Payment Proof -->
+            <div class="content-card" style="margin-bottom: 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3><i class="fas fa-clock" style="color: #F59E0B;"></i> Menunggu Upload Bukti Bayar</h3>
+                    <span class="badge badge-info"><?php echo count($pending_no_proof); ?> pesanan</span>
+                </div>
+                
+                <?php if (empty($pending_no_proof)): ?>
+                    <div class="empty-state">
+                        <i class="fas fa-inbox"></i>
+                        <div>Semua pesanan sudah upload bukti bayar</div>
+                    </div>
+                <?php else: ?>
+                    <div style="overflow-x: auto;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Kode Transaksi</th>
+                                    <th>Customer</th>
+                                    <th>Total</th>
+                                    <th>Waktu Order</th>
+                                    <th>Status</th>
+                                    <th>Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($pending_no_proof as $trx): ?>
+                                <tr>
+                                    <td><strong style="color: var(--primary);"><?php echo htmlspecialchars($trx['kode_transaksi']); ?></strong></td>
+                                    <td>
+                                        <div><?php echo htmlspecialchars($trx['customer_name']); ?></div>
+                                        <div style="font-size: 12px; color: var(--text-light);"><?php echo htmlspecialchars($trx['customer_email']); ?></div>
+                                    </td>
+                                    <td style="font-weight: 600;"><?php echo format_rupiah($trx['grand_total']); ?></td>
+                                    <td>
+                                        <div><?php echo date('d M Y, H:i', strtotime($trx['created_at'])); ?></div>
+                                        <div style="font-size: 12px; color: <?php echo $trx['hours_pending'] > 20 ? '#EF4444' : '#F59E0B'; ?>;">
+                                            <?php echo $trx['hours_pending']; ?> jam yang lalu
+                                            <?php if ($trx['hours_pending'] > 20): ?>
+                                                <br><small>(Akan otomatis batal)</small>
+                                            <?php endif; ?>
+                                        </div>
+                                    </td>
+                                    <td><span class="badge badge-warning">Belum Upload</span></td>
+                                    <td>
+                                        <form method="POST" style="display: inline;">
+                                            <input type="hidden" name="action" value="cancel_order">
+                                            <input type="hidden" name="transaksi_id" value="<?php echo $trx['id']; ?>">
+                                            <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Batalkan pesanan ini?')">
+                                                <i class="fas fa-times"></i> Batalkan
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
+            </div>
+            
             <!-- Pending Payments -->
             <div class="content-card">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
@@ -717,6 +868,63 @@ $verified_payments = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                 <i class="fas fa-eye"></i>
                                             </button>
                                         <?php endif; ?>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
+            </div>
+
+            <!-- Recently Cancelled Orders -->
+            <div class="content-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3><i class="fas fa-times-circle" style="color: #EF4444;"></i> Riwayat Pembatalan Pesanan</h3>
+                    <span class="badge badge-danger"><?php echo count($cancelled_orders); ?> baru</span>
+                </div>
+                
+                <?php if (empty($cancelled_orders)): ?>
+                    <div class="empty-state">
+                        <i class="fas fa-check-double"></i>
+                        <div>Tidak ada pesanan yang dibatalkan akhir-akhir ini</div>
+                    </div>
+                <?php else: ?>
+                    <div style="overflow-x: auto;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Kode TRX</th>
+                                    <th>Customer</th>
+                                    <th>Tanggal Order</th>
+                                    <th>Total</th>
+                                    <th>Dibatalkan Oleh</th>
+                                    <th>Alasan</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($cancelled_orders as $trx): ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($trx['kode_transaksi']); ?></td>
+                                    <td>
+                                        <div><?php echo htmlspecialchars($trx['customer_name'] ?? 'Guest'); ?></div>
+                                        <div style="font-size: 12px; color: var(--text-light);"><?php echo htmlspecialchars($trx['customer_email'] ?? '-'); ?></div>
+                                    </td>
+                                    <td><?php echo date('d/m/Y H:i', strtotime($trx['created_at'])); ?></td>
+                                    <td><?php echo format_rupiah($trx['grand_total']); ?></td>
+                                    <td>
+                                        <?php if ($trx['cancelled_by'] === 'customer'): ?>
+                                            <span class="badge badge-info">Pelanggan</span>
+                                        <?php elseif ($trx['cancelled_by'] === 'kasir'): ?>
+                                            <span class="badge badge-warning">Kasir/Admin</span>
+                                        <?php elseif ($trx['cancelled_by'] === 'system'): ?>
+                                            <span class="badge badge-secondary">Sistem (Auto)</span>
+                                        <?php else: ?>
+                                            <span class="badge badge-secondary">-</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td style="font-size: 13px; color: #EF4444; font-weight: 500;">
+                                        <?php echo htmlspecialchars($trx['cancel_reason'] ?? 'Tidak ada alasan'); ?>
                                     </td>
                                 </tr>
                                 <?php endforeach; ?>

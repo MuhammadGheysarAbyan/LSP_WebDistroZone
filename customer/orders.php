@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once '../config/session.php';
 require_once '../config/database.php';
 require_once '../includes/auth_check.php';
 require_once '../includes/functions.php';
@@ -9,15 +9,63 @@ check_customer();
 $db = new Database();
 $conn = $db->getConnection();
 
-// Get customer orders
+// Handle order cancellation
+if (isset($_POST['action']) && $_POST['action'] == 'cancel_order') {
+    $transaksi_id = $_POST['transaksi_id'];
+    $customer_id = $_SESSION['user_id'];
+    
+    // Verify order belongs to customer and is pending
+    $chk_sql = "SELECT id FROM transaksi WHERE id = :id AND customer_id = :cid AND status = 'pending'";
+    $chk_stmt = $conn->prepare($chk_sql);
+    $chk_stmt->execute(['id' => $transaksi_id, 'cid' => $customer_id]);
+    
+    if ($chk_stmt->rowCount() > 0) {
+        $conn->beginTransaction();
+        try {
+            // Update transaction status
+            $sql = "UPDATE transaksi SET status = 'cancelled', 
+                    cancelled_by = 'customer', 
+                    cancel_reason = 'Dibatalkan oleh pelanggan' 
+                    WHERE id = :id";
+            $stmt = $conn->prepare($sql);
+            $stmt->execute(['id' => $transaksi_id]);
+            
+            // Return stock
+            $sql_items = "SELECT kaos_id, qty FROM detail_transaksi WHERE transaksi_id = :id";
+            $stmt_items = $conn->prepare($sql_items);
+            $stmt_items->execute(['id' => $transaksi_id]);
+            $items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
+            
+            foreach ($items as $item) {
+                $sql_stock = "UPDATE kaos_varian SET stok = stok + :qty WHERE id = :id";
+                $stmt_stock = $conn->prepare($sql_stock);
+                $stmt_stock->execute(['qty' => $item['qty'], 'id' => $item['kaos_id']]);
+            }
+            
+            $conn->commit();
+            header("Location: orders.php?success=Order berhasil dibatalkan dan stok dikembalikan");
+            exit;
+        } catch (Exception $e) {
+            $conn->rollBack();
+            header("Location: orders.php?error=Gagal membatalkan order");
+            exit;
+        }
+    }
+}
+
+// Get customer orders with payment proof status
 $query = "SELECT t.*, 
           CASE 
             WHEN t.status = 'pending' THEN 'Menunggu Pembayaran'
             WHEN t.status = 'verified' THEN 'Sedang Diproses'
             WHEN t.status = 'completed' THEN 'Selesai'
+            WHEN t.status = 'cancelled' AND t.cancelled_by = 'kasir' THEN 'Ditolak'
+            WHEN t.status = 'cancelled' AND t.cancelled_by = 'customer' THEN 'Dibatalkan'
             WHEN t.status = 'cancelled' THEN 'Dibatalkan'
           END as status_text,
-          COUNT(dt.id) as total_items
+          t.cancelled_by, t.cancel_reason,
+          COUNT(dt.id) as total_items,
+          (SELECT COUNT(*) FROM payment_proof pp WHERE pp.transaksi_id = t.id) as has_payment_proof
           FROM transaksi t
           LEFT JOIN detail_transaksi dt ON t.id = dt.transaksi_id
           WHERE t.customer_id = :customer_id
@@ -388,11 +436,14 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 <body>
     <nav class="navbar">
         <div class="navbar-content">
-            <a href="index.php" class="logo">DistroZone</a>
+            <a href="index.php" class="logo" style="display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-layer-group"></i>
+                DistroZone
+            </a>
             <div class="nav-links">
                 <a href="index.php">Home</a>
                 <a href="shop.php">Shop</a>
-                <a href="orders.php" class="active">Pesanan</a>
+                <a href="orders.php" class="active" title="Pesanan Saya"><i class="fas fa-box"></i></a>
                 <a href="cart.php"><i class="fas fa-shopping-bag"></i></a>
                 <?php if(isset($_SESSION['user_id'])): ?>
                     <a href="../auth/logout.php">Logout</a>
@@ -441,6 +492,11 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         <div class="status-badge status-<?php echo $order['status']; ?>">
                             <?php echo htmlspecialchars($order['status_text']); ?>
                         </div>
+                        <?php if($order['status'] == 'cancelled' && $order['cancel_reason']): ?>
+                            <div style="font-size: 11px; color: #EF4444; margin-top: 4px; font-weight: 500;">
+                                <i class="fas fa-info-circle"></i> <?php echo htmlspecialchars($order['cancel_reason']); ?>
+                            </div>
+                        <?php endif; ?>
                     </div>
                     
                     <div class="order-body">
@@ -485,8 +541,18 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         </a>
                         
                         <?php if($order['status'] == 'pending'): ?>
-                            <button class="btn btn-success" onclick="openUploadModal('<?php echo $order['id']; ?>')">
-                                <i class="fas fa-upload"></i> Upload Bukti Bayar
+                            <?php if($order['has_payment_proof'] == 0): ?>
+                                <button class="btn btn-success" onclick="openUploadModal('<?php echo $order['id']; ?>')">
+                                    <i class="fas fa-upload"></i> Upload Bukti Bayar
+                                </button>
+                            <?php else: ?>
+                                <span class="btn btn-secondary" style="cursor: default;">
+                                    <i class="fas fa-clock"></i> Menunggu Verifikasi
+                                </span>
+                            <?php endif; ?>
+                            
+                            <button class="btn btn-danger" onclick="cancelOrder('<?php echo $order['id']; ?>')">
+                                <i class="fas fa-trash"></i> Batalkan Pesanan
                             </button>
                         <?php endif; ?>
                         
@@ -530,6 +596,7 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
         </div>
     </div>
     
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
         function filterOrders(status) {
             const cards = document.querySelectorAll('.order-card');
@@ -554,6 +621,40 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         function closeUploadModal() {
             document.getElementById('uploadModal').classList.remove('active');
+        }
+        
+        function cancelOrder(id) {
+            Swal.fire({
+                title: 'Batalkan Pesanan?',
+                text: "Pesanan yang dibatalkan tidak bisa dikembalikan!",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#EF4444',
+                cancelButtonColor: '#6B7280',
+                confirmButtonText: 'Ya, Batalkan!',
+                cancelButtonText: 'Kembali'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = 'orders.php';
+                    
+                    const actionInput = document.createElement('input');
+                    actionInput.type = 'hidden';
+                    actionInput.name = 'action';
+                    actionInput.value = 'cancel_order';
+                    
+                    const idInput = document.createElement('input');
+                    idInput.type = 'hidden';
+                    idInput.name = 'transaksi_id';
+                    idInput.value = id;
+                    
+                    form.appendChild(actionInput);
+                    form.appendChild(idInput);
+                    document.body.appendChild(form);
+                    form.submit();
+                }
+            });
         }
         
         // Close modal on click outside

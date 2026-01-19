@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once '../config/session.php';
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 require_once '../includes/auth_check.php';
@@ -53,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['payment_proof'])) {
             // Optional: Update transaction status or just notify admin?
             // For now, let's keep transaction as 'pending' but having proof.
             
-            $message = "Bukti pembayaran berhasil diupload! Mohon tunggu verifikasi admin.";
+            $message = "Bukti pembayaran berhasil diupload! Mohon tunggu verifikasi kasir.";
         } catch(PDOException $e) {
             $error = "Database error: " . $e->getMessage();
         }
@@ -255,12 +255,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['payment_proof'])) {
                     <div class="alert alert-error"><?php echo $error; ?></div>
                 <?php endif; ?>
                 
-                <form method="POST" enctype="multipart/form-data">
+                <form method="POST" enctype="multipart/form-data" id="paymentForm" onsubmit="return validateForm()">
                     <label class="upload-area" style="display: block;">
                         <i class="fas fa-cloud-upload-alt" style="font-size: 32px; color: #94A3B8; margin-bottom: 10px;"></i>
                         <div style="font-weight: 600; color: #475569;">Upload Bukti Transfer</div>
                         <div style="font-size: 12px; color: #94A3B8; margin-top: 5px;">Format JPG, PNG (Max 5MB)</div>
-                        <input type="file" name="payment_proof" accept="image/*" required style="display: none;" onchange="previewFile(this)">
+                        <input type="file" name="payment_proof" id="payment_proof" accept="image/*" style="display: none;" onchange="previewFile(this)">
                         <div id="file-name" style="margin-top: 10px; font-weight: 600; color: var(--primary);"></div>
                     </label>
                     
@@ -274,12 +274,28 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['payment_proof'])) {
         </div>
     </div>
     
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
         function previewFile(input) {
             const file = input.files[0];
             if (file) {
                 document.getElementById('file-name').textContent = "File: " + file.name;
             }
+        }
+        
+        function validateForm() {
+            const fileInput = document.getElementById('payment_proof');
+            if (!fileInput.files || fileInput.files.length === 0) {
+                Swal.fire({
+                    title: 'Upload Bukti Transfer',
+                    text: 'Silakan upload bukti transfer terlebih dahulu sebelum konfirmasi pembayaran.',
+                    icon: 'warning',
+                    confirmButtonColor: '#10B981',
+                    confirmButtonText: 'OK'
+                });
+                return false;
+            }
+            return true;
         }
     </script>
 </body>

@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once '../config/session.php';
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 require_once '../includes/auth_check.php';
@@ -1169,10 +1169,12 @@ if ($id && $action === 'edit') {
                                                         <?php endforeach; ?>
                                                     </div>
                                                 </td>
-                                                <td><input type="number" name="harga[0]" class="form-control" placeholder="Harga" style="font-weight: 700; font-size: 18px; width: 180px; color: var(--primary);"></td>
+                                                <td>
+                                                    <input type="number" name="harga[0]" class="form-control" placeholder="Harga" style="font-weight: 700; font-size: 18px; width: 180px; color: var(--primary);">
+                                                    <input type="hidden" name="harga_pokok[0]" value="0">
+                                                </td>
                                                 <td><input type="number" name="stok[0]" class="form-control" value="0" style="width: 70px;"></td>
                                                 <td><input type="file" name="foto_varian[0]" class="form-control" style="width: 150px;"></td>
-                                                <input type="hidden" name="harga_pokok[0]" value="0">
                                                 <td><button type="button" class="btn-icon delete" onclick="removeVariantRow(this)"><i class="fas fa-times"></i></button></td>
                                             </tr>
                                         <?php else: ?>
@@ -1264,8 +1266,10 @@ if ($id && $action === 'edit') {
                     </div>
                 </td>
                 <td>${sizeHtml}</td>
-                <td><input type="number" name="harga[${idx}]" class="form-control" placeholder="Harga" style="font-weight: 700; font-size: 18px; width: 180px; color: var(--primary);"></td>
-                <input type="hidden" name="harga_pokok[${idx}]" value="0">
+                <td>
+                    <input type="number" name="harga[${idx}]" class="form-control" placeholder="Harga" style="font-weight: 700; font-size: 18px; width: 180px; color: var(--primary);">
+                    <input type="hidden" name="harga_pokok[${idx}]" value="0">
+                </td>
                 <td><input type="number" name="stok[${idx}]" class="form-control" value="0" style="width: 70px;"></td>
                 <td><input type="file" name="foto_varian[${idx}]" class="form-control" style="width: 150px;"></td>
                 <td><button type="button" class="btn-icon delete" onclick="removeVariantRow(this)"><i class="fas fa-times"></i></button></td>

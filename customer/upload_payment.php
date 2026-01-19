@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once '../config/database.php';
+require_once '../includes/functions.php';
 require_once '../includes/auth_check.php';
 
 check_customer();
@@ -28,6 +29,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $upload_result = upload_file($_FILES['bukti_transfer'], '../assets/uploads/payments/', ['jpg', 'jpeg', 'png']);
         
         if ($upload_result['success']) {
+            $file_path = 'assets/uploads/payments/' . $upload_result['filename'];
+            
             // Check if proof already exists
             $query_check = "SELECT id FROM payment_proof WHERE transaksi_id = :transaksi_id";
             $stmt_check = $conn->prepare($query_check);
@@ -40,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                 WHERE transaksi_id = :transaksi_id";
                 $stmt_update = $conn->prepare($query_update);
                 $stmt_update->execute([
-                    ':file' => $upload_result['filename'],
+                    ':file' => $file_path,
                     ':transaksi_id' => $transaksi_id
                 ]);
             } else {
@@ -52,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $stmt_insert->execute([
                     ':transaksi_id' => $transaksi_id,
                     ':customer_id' => $customer_id,
-                    ':file' => $upload_result['filename']
+                    ':file' => $file_path
                 ]);
             }
             

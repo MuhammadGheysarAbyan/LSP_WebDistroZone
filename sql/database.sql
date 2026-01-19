@@ -21,6 +21,7 @@ CREATE TABLE `users` (
   `no_telp` varchar(20) DEFAULT NULL,
   `nik` varchar(20) DEFAULT NULL,
   `role` enum('admin','kasir','customer') NOT NULL DEFAULT 'customer',
+  `shift` varchar(20) DEFAULT NULL,
   `foto` varchar(255) DEFAULT NULL,
   `status` enum('active','inactive') NOT NULL DEFAULT 'active',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
@@ -35,10 +36,10 @@ CREATE TABLE `users` (
 -- Dumping data for table `users`
 --
 
-INSERT INTO `users` (`user_code`, `username`, `password`, `nama`, `email`, `alamat`, `no_telp`, `nik`, `role`, `status`) VALUES
-('ADM-001', 'admin', 'password', 'Owner DistroZone', 'admin@distrozone.com', 'Jln. Raya Pegangsaan Timur No.29H', '081234567890', '3171234567890001', 'admin', 'active'),
-('KSR-001', 'kasir1', 'password', 'Kasir Utama', 'kasir@distrozone.com', 'Jakarta', '081298765432', '3171234567890002', 'kasir', 'active'),
-('CST-001', 'customer', 'password', 'Pelanggan Setia', 'customer@distrozone.com', 'Surabaya', '081211112222', NULL, 'customer', 'active');
+INSERT INTO `users` (`user_code`, `username`, `password`, `nama`, `email`, `alamat`, `no_telp`, `nik`, `role`, `shift`, `status`) VALUES
+('ADM-001', 'admin', 'password', 'Owner DistroZone', 'admin@distrozone.com', 'Jln. Raya Pegangsaan Timur No.29H', '081234567890', '3171234567890001', 'admin', NULL, 'active'),
+('KSR-001', 'kasir1', 'password', 'Kasir Utama', 'kasir@distrozone.com', 'Jakarta', '081298765432', '3171234567890002', 'kasir', 'Pagi', 'active'),
+('CST-001', 'customer', 'password', 'Pelanggan Setia', 'customer@distrozone.com', 'Surabaya', '081211112222', NULL, 'customer', NULL, 'active');
 -- Password default: 'password'
 
 -- --------------------------------------------------------
@@ -90,24 +91,24 @@ CREATE TABLE `kaos_master` (
 --
 
 INSERT INTO `kaos_master` (`id`, `nama_kaos`, `merek`, `kategori_id`, `type_kaos`, `deskripsi`, `foto_utama`) VALUES
-(1, 'Vintage Classic Tee', 'DistroZone', 1, 'Lengan Pendek', 'Kaos cotton combed 30s berkualitas tinggi.', NULL),
-(2, 'Urban Streetwear', 'Erigo', 1, 'Lengan Pendek', 'Desain urban modern untuk gaya maksimal.', NULL),
-(3, 'Bomber Jacket', 'DistroZone', 3, 'Lengan Panjang', 'Jaket bomber anti angin dan air.', NULL),
-(4, 'Classic White Tee', 'DistroZone', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari DistroZone', NULL),
-(5, 'Midnight Black Oversize', 'DistroZone', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari DistroZone', NULL),
-(6, 'Navy Essential Long', 'DistroZone', 1, 'Lengan Panjang', 'Produk berkualitas terbaik dari DistroZone', NULL),
-(7, 'Maron Solid Vibe', 'UrbanStyle', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari UrbanStyle', NULL),
-(8, 'Army Green Duty', 'UrbanStyle', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari UrbanStyle', NULL),
-(9, 'Charcoal Grey Daily', 'DistroZone', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari DistroZone', NULL),
-(10, 'Sandy Beige Relax', 'DistroZone', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari DistroZone', NULL),
-(11, 'Crimson Red Energy', 'DistroZone', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari DistroZone', NULL),
-(12, 'Royal Blue Bold', 'UrbanStyle', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari UrbanStyle', NULL),
-(13, 'Sunshine Yellow Lite', 'DistroZone', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari DistroZone', NULL),
-(14, 'Forest Green Nature', 'UrbanStyle', 1, 'Lengan Panjang', 'Produk berkualitas terbaik dari UrbanStyle', NULL),
-(15, 'Coffee Brown Warm', 'DistroZone', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari DistroZone', NULL),
-(16, 'Lavender Soft Look', 'DistroZone', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari DistroZone', NULL),
-(17, 'Deep Purple Urban', 'UrbanStyle', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari UrbanStyle', NULL),
-(18, 'Teal Ocean breeze', 'DistroZone', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari DistroZone', NULL);
+(1, 'Vintage Classic Tee', 'DistroZone', 1, 'Lengan Pendek', 'Kaos cotton combed 30s berkualitas tinggi.', 'assets/uploads/products/nikeputih.png'),
+(2, 'Urban Streetwear', 'Erigo', 1, 'Lengan Pendek', 'Desain urban modern untuk gaya maksimal.', 'assets/uploads/products/adidasputih.png'),
+(3, 'Bomber Jacket', 'DistroZone', 3, 'Lengan Panjang', 'Jaket bomber anti angin dan air.', 'assets/uploads/products/guccicoklat.png'),
+(4, 'Classic White Tee', 'DistroZone', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari DistroZone', 'assets/uploads/products/millsputih.png'),
+(5, 'Midnight Black Oversize', 'DistroZone', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari DistroZone', 'assets/uploads/products/nikehitam.png'),
+(6, 'Navy Essential Long', 'DistroZone', 1, 'Lengan Panjang', 'Produk berkualitas terbaik dari DistroZone', 'assets/uploads/products/adidasbiru.png'),
+(7, 'Maron Solid Vibe', 'UrbanStyle', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari UrbanStyle', 'assets/uploads/products/guccimerah.png'),
+(8, 'Army Green Duty', 'UrbanStyle', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari UrbanStyle', 'assets/uploads/products/adidashijau.png'),
+(9, 'Charcoal Grey Daily', 'DistroZone', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari DistroZone', 'assets/uploads/products/guccihitam.png'),
+(10, 'Sandy Beige Relax', 'DistroZone', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari DistroZone', 'assets/uploads/products/nikekuning.png'),
+(11, 'Crimson Red Energy', 'DistroZone', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari DistroZone', 'assets/uploads/products/nikepink.png'),
+(12, 'Royal Blue Bold', 'UrbanStyle', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari UrbanStyle', 'assets/uploads/products/guccibiru.png'),
+(13, 'Sunshine Yellow Lite', 'DistroZone', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari DistroZone', 'assets/uploads/products/sunshine.png'),
+(14, 'Forest Green Nature', 'UrbanStyle', 1, 'Lengan Panjang', 'Produk berkualitas terbaik dari UrbanStyle', 'assets/uploads/products/forest.png'),
+(15, 'Coffee Brown Warm', 'DistroZone', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari DistroZone', 'assets/uploads/products/coffee.png'),
+(16, 'Lavender Soft Look', 'DistroZone', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari DistroZone', 'assets/uploads/products/lavender.png'),
+(17, 'Deep Purple Urban', 'UrbanStyle', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari UrbanStyle', 'assets/uploads/products/millsungu.png'),
+(18, 'Teal Ocean breeze', 'DistroZone', 1, 'Lengan Pendek', 'Produk berkualitas terbaik dari DistroZone', 'assets/uploads/products/niketeal.png');
 
 -- --------------------------------------------------------
 
@@ -137,33 +138,33 @@ CREATE TABLE `kaos_varian` (
 -- Dumping data for table `kaos_varian`
 --
 
-INSERT INTO `kaos_varian` (`kaos_master_id`, `kode_varian`, `warna`, `warna_hex`, `size`, `harga`, `harga_pokok`, `stok`) VALUES
-(1, 'TS-001', 'Hitam', '#000000', 'L', 85000.00, 50000.00, 100),
-(2, 'TS-002', 'Putih', '#FFFFFF', 'XL', 95000.00, 60000.00, 50),
-(3, 'JK-001', 'Navy', '#000080', 'L', 250000.00, 180000.00, 25),
-(4, 'CLA1001', 'Putih', '#FFFFFF', 'S', 85000.00, 0, 25),
-(4, 'CLA1002', 'Putih', '#FFFFFF', 'M', 85000.00, 0, 30),
-(4, 'CLA1003', 'Putih', '#FFFFFF', 'L', 85000.00, 0, 45),
-(4, 'CLA1004', 'Putih', '#FFFFFF', 'XL', 85000.00, 0, 12),
-(5, 'MID2001', 'Hitam', '#000000', 'L', 125000.00, 0, 20),
-(5, 'MID2002', 'Hitam', '#000000', 'XL', 125000.00, 0, 15),
-(6, 'NAV3001', 'Navy', '#000080', 'M', 95000.00, 0, 40),
-(6, 'NAV3002', 'Navy', '#000080', 'L', 95000.00, 0, 35),
-(7, 'MAR4001', 'Maron', '#800000', 'S', 89000.00, 0, 50),
-(7, 'MAR4002', 'Maron', '#800000', 'M', 89000.00, 0, 45),
-(7, 'MAR4003', 'Maron', '#800000', 'L', 89000.00, 0, 40),
-(8, 'ARM5001', 'Army', '#4B5320', 'L', 89000.00, 0, 30),
-(8, 'ARM5002', 'Army', '#4B5320', 'XL', 89000.00, 0, 25),
-(9, 'CHA6001', 'Grey', '#333333', 'M', 85000.00, 0, 20),
-(10, 'SAN7001', 'Beige', '#F5F5DC', 'L', 110000.00, 0, 15),
-(11, 'CRI8001', 'Merah', '#DC143C', 'XL', 85000.00, 0, 10),
-(12, 'ROY9001', 'Biru', '#4169E1', 'M', 89000.00, 0, 30),
-(13, 'SUN1001', 'Kuning', '#FFD700', 'L', 85000.00, 0, 25),
-(14, 'FOR1101', 'Hijau', '#228B22', 'XL', 99000.00, 0, 20),
-(15, 'COF1201', 'Coklat', '#6F4E37', 'M', 115000.00, 0, 15),
-(16, 'LAV1301', 'Lavender', '#E6E6FA', 'L', 85000.00, 0, 10),
-(17, 'DEE1401', 'Ungu', '#301934', 'XL', 89000.00, 0, 5),
-(18, 'TEA1501', 'Teal', '#008080', 'M', 85000.00, 0, 30);
+INSERT INTO `kaos_varian` (`kaos_master_id`, `kode_varian`, `warna`, `warna_hex`, `size`, `harga`, `harga_pokok`, `stok`, `foto_varian`) VALUES
+(1, 'TS-001', 'Hitam', '#000000', 'L', 85000.00, 50000.00, 100, 'assets/uploads/products/nikeputih.png'),
+(2, 'TS-002', 'Putih', '#FFFFFF', 'XL', 95000.00, 60000.00, 50, 'assets/uploads/products/adidasputih.png'),
+(3, 'JK-001', 'Navy', '#000080', 'L', 250000.00, 180000.00, 25, 'assets/uploads/products/guccicoklat.png'),
+(4, 'CLA1001', 'Putih', '#FFFFFF', 'S', 85000.00, 0, 25, 'assets/uploads/products/millsputih.png'),
+(4, 'CLA1002', 'Putih', '#FFFFFF', 'M', 85000.00, 0, 30, 'assets/uploads/products/millsputih.png'),
+(4, 'CLA1003', 'Putih', '#FFFFFF', 'L', 85000.00, 0, 45, 'assets/uploads/products/millsputih.png'),
+(4, 'CLA1004', 'Putih', '#FFFFFF', 'XL', 85000.00, 0, 12, 'assets/uploads/products/millsputih.png'),
+(5, 'MID2001', 'Hitam', '#000000', 'L', 125000.00, 0, 20, 'assets/uploads/products/nikehitam.png'),
+(5, 'MID2002', 'Hitam', '#000000', 'XL', 125000.00, 0, 15, 'assets/uploads/products/nikehitam.png'),
+(6, 'NAV3001', 'Navy', '#000080', 'M', 95000.00, 0, 40, 'assets/uploads/products/adidasbiru.png'),
+(6, 'NAV3002', 'Navy', '#000080', 'L', 95000.00, 0, 35, 'assets/uploads/products/adidasbiru.png'),
+(7, 'MAR4001', 'Maron', '#800000', 'S', 89000.00, 0, 50, 'assets/uploads/products/guccimerah.png'),
+(7, 'MAR4002', 'Maron', '#800000', 'M', 89000.00, 0, 45, 'assets/uploads/products/guccimerah.png'),
+(7, 'MAR4003', 'Maron', '#800000', 'L', 89000.00, 0, 40, 'assets/uploads/products/guccimerah.png'),
+(8, 'ARM5001', 'Army', '#4B5320', 'L', 89000.00, 0, 30, 'assets/uploads/products/adidashijau.png'),
+(8, 'ARM5002', 'Army', '#4B5320', 'XL', 89000.00, 0, 25, 'assets/uploads/products/adidashijau.png'),
+(9, 'CHA6001', 'Grey', '#333333', 'M', 85000.00, 0, 20, 'assets/uploads/products/guccihitam.png'),
+(10, 'SAN7001', 'Beige', '#F5F5DC', 'L', 110000.00, 0, 15, 'assets/uploads/products/nikekuning.png'),
+(11, 'CRI8001', 'Merah', '#DC143C', 'XL', 85000.00, 0, 10, 'assets/uploads/products/nikepink.png'),
+(12, 'ROY9001', 'Biru', '#4169E1', 'M', 89000.00, 0, 30, 'assets/uploads/products/guccibiru.png'),
+(13, 'SUN1001', 'Kuning', '#FFD700', 'L', 85000.00, 0, 25, 'assets/uploads/products/nikekuning.png'),
+(14, 'FOR1101', 'Hijau', '#228B22', 'XL', 99000.00, 0, 20, 'assets/uploads/products/adidashijau.png'),
+(15, 'COF1201', 'Coklat', '#6F4E37', 'M', 115000.00, 0, 15, 'assets/uploads/products/guccicoklat.png'),
+(16, 'LAV1301', 'Lavender', '#E6E6FA', 'L', 85000.00, 0, 10, 'assets/uploads/products/millsungu.png'),
+(17, 'DEE1401', 'Ungu', '#301934', 'XL', 89000.00, 0, 5, 'assets/uploads/products/millsungu.png'),
+(18, 'TEA1501', 'Teal', '#008080', 'M', 85000.00, 0, 30, 'assets/uploads/products/niketeal.png');
 
 -- --------------------------------------------------------
 
@@ -264,19 +265,24 @@ INSERT INTO `shipping_rates` (`wilayah`, `cost_per_kg`) VALUES
 
 CREATE TABLE `settings` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `nama_setting` varchar(50) NOT NULL,
-  `isi_setting` text DEFAULT NULL,
+  `setting_key` varchar(50) NOT NULL,
+  `setting_value` text DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `nama_setting` (`nama_setting`)
+  UNIQUE KEY `setting_key` (`setting_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 --
 -- Dumping data for table `settings`
 --
 
-INSERT INTO `settings` (`nama_setting`, `isi_setting`) VALUES
-('jam_operasional_offline', '{\"open\":\"10:00\", \"close\":\"20:00\", \"closed_days\":[1]}'),
-('jam_operasional_online', '{\"open\":\"10:00\", \"close\":\"17:00\", \"closed_days\":[]}');
+INSERT INTO `settings` (`setting_key`, `setting_value`) VALUES
+('store_name', 'DistroZone'),
+('store_description', 'Pusat Fashion Distro Terkini'),
+('store_address', 'Jln. Raya Pegangsaan Timur No.29H, Jakarta'),
+('store_phone', '081234567890'),
+('store_email', 'info@distrozone.com'),
+('jam_operasional_offline', '{"open":"10:00", "close":"20:00", "closed_days":[1]}'),
+('jam_operasional_online', '{"open":"10:00", "close":"17:00", "closed_days":[]}');
 
 -- --------------------------------------------------------
 
@@ -287,10 +293,19 @@ INSERT INTO `settings` (`nama_setting`, `isi_setting`) VALUES
 CREATE TABLE `payment_proof` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `transaksi_id` int(11) NOT NULL,
-  `image_path` varchar(255) NOT NULL,
+  `customer_id` int(11) DEFAULT NULL,
+  `file_bukti` varchar(255) NOT NULL,
   `status` enum('pending','verified','rejected') DEFAULT 'pending',
-  `uploaded_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`)
+  `tanggal_upload` timestamp NOT NULL DEFAULT current_timestamp(),
+  `verified_by` int(11) DEFAULT NULL,
+  `verified_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `transaksi_id` (`transaksi_id`),
+  KEY `customer_id` (`customer_id`),
+  KEY `verified_by` (`verified_by`),
+  CONSTRAINT `payment_proof_ibfk_1` FOREIGN KEY (`transaksi_id`) REFERENCES `transaksi` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `payment_proof_ibfk_2` FOREIGN KEY (`customer_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `payment_proof_ibfk_3` FOREIGN KEY (`verified_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- --------------------------------------------------------

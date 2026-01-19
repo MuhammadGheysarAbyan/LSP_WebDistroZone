@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once '../config/session.php';
 require_once '../config/database.php';
 
 // Helper functions
@@ -523,12 +523,20 @@ if (isset($_SESSION['user_id'])) {
                 grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
             }
         }
+        
+        /* SweetAlert on top of modal */
+        .swal-on-top {
+            z-index: 3000 !important;
+        }
     </style>
 </head>
 <body>
     <nav class="navbar">
         <div class="navbar-content">
-            <a href="index.php" class="logo">DistroZone</a>
+            <a href="index.php" class="logo" style="display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-layer-group"></i>
+                DistroZone
+            </a>
             <div class="nav-links">
                 <a href="index.php">Home</a>
                 <a href="shop.php" class="active">Shop</a>
@@ -539,6 +547,7 @@ if (isset($_SESSION['user_id'])) {
                             <span class="cart-badge"><?php echo $cart_count; ?></span>
                         <?php endif; ?>
                     </a>
+                    <a href="orders.php" title="Pesanan Saya"><i class="fas fa-box"></i></a>
                     <a href="../auth/logout.php" class="btn">Logout</a>
                 <?php else: ?>
                     <a href="../auth/login.php" class="btn">Login</a>
@@ -834,9 +843,14 @@ if (isset($_SESSION['user_id'])) {
                     Stok Tersedia: <span id="stockValue" style="font-weight: 700; color: var(--dark);"></span>
                 </div>
 
-                <button class="btn-add-cart" style="width: 100%; padding: 16px; border: none; cursor: pointer; font-size: 16px;" onclick="addToCartFromModal()">
-                    <i class="fas fa-shopping-cart"></i> Tambah ke Keranjang
-                </button>
+                <div style="display: flex; gap: 12px; margin-top: 16px;">
+                    <button class="btn-add-cart" style="flex: 1; padding: 16px; border: none; cursor: pointer; font-size: 14px; background: #E2E8F0; color: #475569;" onclick="addToCartFromModal()">
+                        <i class="fas fa-shopping-cart"></i> Keranjang
+                    </button>
+                    <button class="btn-add-cart" style="flex: 1; padding: 16px; border: none; cursor: pointer; font-size: 14px;" onclick="buyNow()">
+                        <i class="fas fa-bolt"></i> Beli Sekarang
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -875,6 +889,7 @@ if (isset($_SESSION['user_id'])) {
                     uniqueColors.push({ name: v.warna, hex: v.warna_hex || '#CBD5E1' });
                 }
             });
+            
             
             uniqueColors.forEach((colorObj, index) => {
                 const opt = document.createElement('div');
@@ -933,11 +948,22 @@ if (isset($_SESSION['user_id'])) {
             
             <?php if(!isset($_SESSION['user_id'])): ?>
                 Swal.fire({
-                    title: 'Login Dulu',
-                    text: 'Silakan login untuk berbelanja.',
+                    title: 'Belum Login',
+                    text: 'Silakan login terlebih dahulu untuk berbelanja.',
                     icon: 'info',
-                    confirmButtonText: 'Login'
-                }).then(() => window.location.href = '../auth/login.php');
+                    showCancelButton: true,
+                    confirmButtonColor: '#10B981',
+                    confirmButtonText: 'Login Sekarang',
+                    cancelButtonText: 'Nanti',
+                    backdrop: true,
+                    customClass: {
+                        container: 'swal-on-top'
+                    }
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        window.location.href = '../auth/login.php';
+                    }
+                });
                 return;
             <?php endif; ?>
 
@@ -951,6 +977,43 @@ if (isset($_SESSION['user_id'])) {
                 Swal.fire({ title: 'Berhasil!', text: 'Produk masuk keranjang', icon: 'success', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000 });
                 document.querySelectorAll('.cart-badge').forEach(el => el.innerText = data.cart_count);
                 closeQuickView();
+            }
+        }
+
+        async function buyNow() {
+            if (!selectedVariant) return;
+            
+            <?php if(!isset($_SESSION['user_id'])): ?>
+                Swal.fire({
+                    title: 'Belum Login',
+                    text: 'Silakan login terlebih dahulu untuk berbelanja.',
+                    icon: 'info',
+                    showCancelButton: true,
+                    confirmButtonColor: '#10B981',
+                    confirmButtonText: 'Login Sekarang',
+                    cancelButtonText: 'Nanti'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        window.location.href = '../auth/login.php';
+                    }
+                });
+                return;
+            <?php endif; ?>
+
+            const formData = new FormData();
+            formData.append('kaos_id', selectedVariant.id);
+            formData.append('qty', 1);
+
+            const response = await fetch('../api/add_to_cart.php', { method: 'POST', body: formData });
+            const data = await response.json();
+            if (data.success) {
+                window.location.href = 'checkout.php';
+            } else {
+                Swal.fire({
+                    title: 'Gagal',
+                    text: data.message,
+                    icon: 'error'
+                });
             }
         }
 

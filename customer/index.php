@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once '../config/session.php';
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 
@@ -580,6 +580,12 @@ foreach ($featured_products as $p) {
                 grid-template-columns: 1fr;
             }
         }
+        
+        /* SweetAlert on top of modal */
+        .swal-on-top {
+            z-index: 3000 !important;
+        }
+        
         /* Quick View Modal */
         .modal {
             display: none;
@@ -786,7 +792,10 @@ foreach ($featured_products as $p) {
 
     <!-- Navbar -->
     <nav class="navbar">
-        <a href="index.php" class="logo">DistroZone</a>
+        <a href="index.php" class="logo" style="display: flex; align-items: center; gap: 10px;">
+            <i class="fas fa-layer-group"></i>
+            DistroZone
+        </a>
         <div class="nav-links">
             <a href="#">Home</a>
             <a href="#featured">Produk</a>
@@ -813,6 +822,9 @@ foreach ($featured_products as $p) {
                 </span>
             </a>
             <?php if(isset($_SESSION['user_id'])): ?>
+                <a href="orders.php" class="btn-icon" title="Pesanan Saya">
+                    <i class="fas fa-box"></i>
+                </a>
                 <a href="../auth/logout.php" class="btn-icon" title="Logout">
                     <i class="fas fa-sign-out-alt"></i>
                 </a>
@@ -864,10 +876,12 @@ foreach ($featured_products as $p) {
             </div>
 
             <div class="hero-card">
-                <!-- Placeholder Image -->
-                <div style="width: 100%; height: 400px; background: #F3F4F6; border-radius: 16px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
-                    <i class="fas fa-tshirt" style="font-size: 120px; color: rgba(16, 185, 129, 0.2);"></i>
-                </div>
+                <!-- Product Image from database -->
+                <?php if (!empty($featured_products) && !empty($featured_products[0]['foto_utama'])): ?>
+                <img src="../<?php echo htmlspecialchars($featured_products[0]['foto_utama']); ?>" alt="Featured Product" style="width: 100%; height: 400px; object-fit: cover; border-radius: 16px;">
+                <?php else: ?>
+                <img src="../assets/img/distrozonelogo.png" alt="DistroZone" style="width: 100%; height: 400px; object-fit: contain; border-radius: 16px; background: #F3F4F6; padding: 40px;">
+                <?php endif; ?>
             </div>
         </div>
     </section>
@@ -1024,8 +1038,8 @@ foreach ($featured_products as $p) {
                     </div>
                 </div>
             </div>
-            <div class="about-image" style="background: linear-gradient(135deg, #a7f3d0 0%, #34d399 100%); height: 400px; border-radius: 20px; display: flex; align-items: center; justify-content: center;">
-                <i class="fas fa-store" style="font-size: 100px; color: white; opacity: 0.8;"></i>
+            <div class="about-image" style="height: 400px; border-radius: 20px; overflow: hidden;">
+                <img src="../assets/img/team.jpg" alt="DistroZone Team" style="width: 100%; height: 100%; object-fit: cover;">
             </div>
         </div>
     </section>
@@ -1111,9 +1125,12 @@ foreach ($featured_products as $p) {
                     </div>
                 </div>
 
-                <div class="modal-actions">
-                    <button class="btn btn-primary" style="flex: 1; border: none; cursor: pointer;" onclick="addToCartFromModal()">
-                        <i class="fas fa-shopping-cart"></i> Tambah ke Keranjang
+                <div class="modal-actions" style="display: flex; gap: 12px;">
+                    <button class="btn btn-secondary" style="flex: 1; border: none; cursor: pointer; background: #E2E8F0; color: #475569;" onclick="addToCartFromModal()">
+                        <i class="fas fa-shopping-cart"></i> Keranjang
+                    </button>
+                    <button class="btn btn-primary" style="flex: 1; border: none; cursor: pointer;" onclick="buyNow()">
+                        <i class="fas fa-bolt"></i> Beli Sekarang
                     </button>
                 </div>
             </div>
@@ -1245,7 +1262,11 @@ foreach ($featured_products as $p) {
                     showCancelButton: true,
                     confirmButtonColor: '#10B981',
                     confirmButtonText: 'Login Sekarang',
-                    cancelButtonText: 'Nanti'
+                    cancelButtonText: 'Nanti',
+                    backdrop: true,
+                    customClass: {
+                        container: 'swal-on-top'
+                    }
                 }).then((result) => {
                     if (result.isConfirmed) {
                         window.location.href = '../auth/login.php';
@@ -1283,6 +1304,53 @@ foreach ($featured_products as $p) {
                     });
                     
                     closeQuickView();
+                } else {
+                    Swal.fire({
+                        title: 'Gagal',
+                        text: data.message,
+                        icon: 'error'
+                    });
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                Swal.fire('Error', 'Terjadi kesalahan sistem', 'error');
+            }
+        }
+
+        async function buyNow() {
+            if (!selectedVariant) return;
+            
+            <?php if(!isset($_SESSION['user_id'])): ?>
+                Swal.fire({
+                    title: 'Belum Login',
+                    text: 'Silakan login terlebih dahulu untuk berbelanja.',
+                    icon: 'info',
+                    showCancelButton: true,
+                    confirmButtonColor: '#10B981',
+                    confirmButtonText: 'Login Sekarang',
+                    cancelButtonText: 'Nanti'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        window.location.href = '../auth/login.php';
+                    }
+                });
+                return;
+            <?php endif; ?>
+
+            try {
+                const formData = new FormData();
+                formData.append('kaos_id', selectedVariant.id);
+                formData.append('qty', 1);
+
+                const response = await fetch('../api/add_to_cart.php', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    // Redirect langsung ke checkout
+                    window.location.href = 'checkout.php';
                 } else {
                     Swal.fire({
                         title: 'Gagal',

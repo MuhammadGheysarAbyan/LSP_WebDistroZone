@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once '../config/session.php';
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 require_once '../includes/auth_check.php';
@@ -365,7 +365,8 @@ foreach ($top_categories as $cat) {
     <div class="dashboard-container">
         <!-- Sidebar -->
         <aside class="sidebar">
-            <div class="logo">
+            <div class="logo" style="display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-layer-group" style="font-size: 24px; color: #10B981;"></i>
                 <h1>DistroZone</h1>
             </div>
             

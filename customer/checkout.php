@@ -1,5 +1,5 @@
 <?php
-session_start();
+require_once '../config/session.php';
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 require_once '../includes/auth_check.php';
@@ -374,7 +374,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 <body>
     <nav class="navbar">
         <div class="navbar-content">
-            <div class="logo">DistroZone</div>
+            <div class="logo" style="display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-layer-group"></i>
+                DistroZone
+            </div>
              <a href="cart.php" class="btn-back">
                 <i class="fas fa-arrow-left"></i> Kembali ke Keranjang
             </a>
@@ -404,7 +407,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         
                         <?php foreach($cart_items as $item): ?>
                         <div class="cart-item">
-                            <img src="../assets/uploads/products/<?php echo $item['foto'] ?: 'default.jpg'; ?>" 
+                            <img src="../<?php echo $item['foto'] ?: 'assets/img/no-image.jpg'; ?>" 
                                  alt="<?php echo $item['nama_kaos']; ?>" 
                                  class="item-image">
                             <div class="item-details">
@@ -438,7 +441,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                             <select name="payment_method" required>
                                 <option value="transfer">Transfer Bank (BCA / Mandiri)</option>
                                 <option value="qris">QRIS (GoPay / OVO / Dana)</option>
-                                <option value="cod">Cash on Delivery (COD)</option>
                             </select>
                         </div>
                         
