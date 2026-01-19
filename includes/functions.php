@@ -287,7 +287,7 @@ function generate_code($prefix) {
     $code_prefix = $prefix . '-' . $date . '-';
     
     // Get the last code for today
-    if ($prefix === 'USR') {
+    if (in_array($prefix, ['USR', 'KSR', 'CST'])) {
         $query = "SELECT MAX(CAST(SUBSTRING_INDEX(user_code, '-', -1) AS UNSIGNED)) as last_num 
                   FROM users WHERE user_code LIKE :pattern";
     } elseif ($prefix === 'TRX') {

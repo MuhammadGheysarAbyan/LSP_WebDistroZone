@@ -19,6 +19,12 @@ $stmt = $conn->prepare($query);
 $stmt->execute([':customer_id' => $_SESSION['user_id']]);
 $cart_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Get user data for default address
+$stmt_user = $conn->prepare("SELECT alamat FROM users WHERE id = :id");
+$stmt_user->execute([':id' => $_SESSION['user_id']]);
+$user_data = $stmt_user->fetch(PDO::FETCH_ASSOC);
+$default_address = $user_data['alamat'] ?? '';
+
 // Calculate subtotal
 $subtotal = 0;
 $total_weight = 0; // in kg (3 pcs = 1 kg)
@@ -48,6 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     } else {
         $shipping_cost = $rate['cost_per_kg'] * $total_weight;
         $grand_total = $subtotal + $shipping_cost;
+        $shipping_address = clean_input($_POST['shipping_address']);
         
         // Start transaction
         $conn->beginTransaction();
@@ -55,9 +62,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         try {
             // Create transaction
             $kode_transaksi = generate_code('TRX');
-            $query_trx = "INSERT INTO transaksi (kode_transaksi, customer_id, total, shipping_city, 
+            $query_trx = "INSERT INTO transaksi (kode_transaksi, customer_id, total, shipping_city, shipping_address,
                           shipping_cost, grand_total, tanggal, payment_method, status, waktu, created_at) 
-                          VALUES (:kode, :customer, :total, :city, :shipping, :grand, CURDATE(), :payment, 'pending', NOW(), NOW())";
+                          VALUES (:kode, :customer, :total, :city, :address, :shipping, :grand, CURDATE(), :payment, 'pending', NOW(), NOW())";
             
             $stmt_trx = $conn->prepare($query_trx);
             $stmt_trx->execute([
@@ -65,6 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 ':customer' => $_SESSION['user_id'],
                 ':total' => $subtotal,
                 ':city' => $shipping_city,
+                ':address' => $shipping_address,
                 ':shipping' => $shipping_cost,
                 ':grand' => $grand_total,
                 ':payment' => $payment_method
@@ -286,7 +294,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
         
         .form-group select,
-        .form-group input {
+        .form-group input,
+        .form-group textarea,
+        .form-control {
             width: 100%;
             padding: 12px 16px;
             border: 2px solid #E5E7EB;
@@ -295,13 +305,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             font-family: inherit;
             background: white;
             transition: all 0.3s;
+            resize: vertical;
         }
         
         .form-group select:focus,
-        .form-group input:focus {
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-control:focus {
             outline: none;
             border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
         }
         
         .summary-row {
@@ -434,6 +447,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                     </option>
                                 <?php endforeach; ?>
                             </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Alamat Lengkap (Jl, No. Rumah, Kel/Kec)</label>
+                            <textarea name="shipping_address" id="shipping_address" rows="3" class="form-control" required placeholder="Masukkan alamat lengkap pengiriman..."><?php echo htmlspecialchars($default_address); ?></textarea>
+                            <small style="color: #64748B; font-size: 12px; margin-top: 4px; display: block;">
+                                <i class="fas fa-info-circle"></i> Alamat ini akan digunakan sebagai tujuan pengiriman.
+                            </small>
                         </div>
                         
                         <div class="form-group">

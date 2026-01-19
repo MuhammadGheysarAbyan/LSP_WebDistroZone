@@ -445,6 +445,7 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 <a href="shop.php">Shop</a>
                 <a href="orders.php" class="active" title="Pesanan Saya"><i class="fas fa-box"></i></a>
                 <a href="cart.php"><i class="fas fa-shopping-bag"></i></a>
+                <a href="settings.php" title="Pengaturan"><i class="fas fa-cog"></i></a>
                 <?php if(isset($_SESSION['user_id'])): ?>
                     <a href="../auth/logout.php">Logout</a>
                 <?php else: ?>

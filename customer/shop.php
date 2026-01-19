@@ -548,6 +548,7 @@ if (isset($_SESSION['user_id'])) {
                         <?php endif; ?>
                     </a>
                     <a href="orders.php" title="Pesanan Saya"><i class="fas fa-box"></i></a>
+                    <a href="settings.php" title="Pengaturan"><i class="fas fa-cog"></i></a>
                     <a href="../auth/logout.php" class="btn">Logout</a>
                 <?php else: ?>
                     <a href="../auth/login.php" class="btn">Login</a>
@@ -844,8 +845,8 @@ if (isset($_SESSION['user_id'])) {
                 </div>
 
                 <div style="display: flex; gap: 12px; margin-top: 16px;">
-                    <button class="btn-add-cart" style="flex: 1; padding: 16px; border: none; cursor: pointer; font-size: 14px; background: #E2E8F0; color: #475569;" onclick="addToCartFromModal()">
-                        <i class="fas fa-shopping-cart"></i> Keranjang
+                    <button class="btn-add-cart" style="flex: 1; padding: 16px; border: none; cursor: pointer; font-size: 14px;" onclick="addToCartFromModal()">
+                        <i class="fas fa-shopping-cart"></i> Tambahkan Keranjang
                     </button>
                     <button class="btn-add-cart" style="flex: 1; padding: 16px; border: none; cursor: pointer; font-size: 14px;" onclick="buyNow()">
                         <i class="fas fa-bolt"></i> Beli Sekarang

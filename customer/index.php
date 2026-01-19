@@ -825,6 +825,9 @@ foreach ($featured_products as $p) {
                 <a href="orders.php" class="btn-icon" title="Pesanan Saya">
                     <i class="fas fa-box"></i>
                 </a>
+                <a href="settings.php" class="btn-icon" title="Pengaturan">
+                    <i class="fas fa-cog"></i>
+                </a>
                 <a href="../auth/logout.php" class="btn-icon" title="Logout">
                     <i class="fas fa-sign-out-alt"></i>
                 </a>
@@ -1126,8 +1129,8 @@ foreach ($featured_products as $p) {
                 </div>
 
                 <div class="modal-actions" style="display: flex; gap: 12px;">
-                    <button class="btn btn-secondary" style="flex: 1; border: none; cursor: pointer; background: #E2E8F0; color: #475569;" onclick="addToCartFromModal()">
-                        <i class="fas fa-shopping-cart"></i> Keranjang
+                    <button class="btn btn-primary" style="flex: 1; border: none; cursor: pointer;" onclick="addToCartFromModal()">
+                        <i class="fas fa-shopping-cart"></i>  Tambahkan Keranjang
                     </button>
                     <button class="btn btn-primary" style="flex: 1; border: none; cursor: pointer;" onclick="buyNow()">
                         <i class="fas fa-bolt"></i> Beli Sekarang

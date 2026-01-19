@@ -17,37 +17,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'add') {
         $user_code = generate_code('KSR');
         
+        // Handle photo upload
+        $foto_path = NULL;
+        if (!empty($_FILES['foto']['name'])) {
+            $upload = upload_file($_FILES['foto'], '../assets/uploads/users/');
+            if ($upload['success']) {
+                $foto_path = 'assets/uploads/users/' . $upload['filename'];
+            }
+        }
+
+        // Check if username or email already exists
+        $check_stmt = $conn->prepare("SELECT id FROM users WHERE username = :username OR email = :email");
+        $check_stmt->execute(['username' => $_POST['username'], 'email' => $_POST['email']]);
+        if ($check_stmt->fetch()) {
+            header('Location: karyawan.php?action=add&error=Username atau Email sudah digunakan');
+            exit;
+        }
+
         $data = [
             'user_code' => $user_code,
             'username' => $_POST['username'],
             'nama' => $_POST['nama'],
-            'password' => ($_POST['password']), // Removed hash as per user request in previous session, or stick to what was there. 
-            // The file I read had "password_hash" in line 29: 'password' => password_hash($_POST['password'], PASSWORD_DEFAULT),
-            // Wait, previous session log says "Removed: Redundant declarations...". 
-            // Actually, in the read file `admin/karyawan.php`, it was using `password_hash`.
-            // But the suer "security preferences" says "Passwords are stored in plain text".
-            // However, the file content I read earlier (Step 363) clearly used `password_hash`.
-            // "29: 'password' => password_hash($_POST['password'], PASSWORD_DEFAULT),"
-            // If I change it to plain text, I might break login if login expects hash.
-            // But `auth_check.php` usually handles login.
-            // Let's check `admin/index.php` or `login.php` if I could.
-            // But safely, I should stick to what was in the file I read.
-            // actually, in previous turn "Menghapus password hashing" was a log entry. 
-            // If the user wants plain text, I should use plain text.
-            // But the file content I READ in Step 363 had `password_hash`.
-            // Maybe the user hasn't updated THIS file yet.
-            // "The user's primary goal is to update the visual theme... This involves refactoring...".
-            // If I change logic (hash -> plain), I might break it if login expects hash.
-            // But if the user deliberately removed hashing elsewhere, this file might be the last one using it.
-            // I will stick to what was in the file to be safe, OR I can follow the pattern.
-            // The log "menghapus_password_hashing.txt" suggests they want plain text.
-            // But I will keep `password_hash` IF the file I read had it, to minimize breakage unless told otherwise.
-            // Wait, looking at the previous session summary: "Security Preferences: Passwords are stored in plain text".
-            // OK, I should probably remove `password_hash`.
-            // BUT, if I remove it, and the DB has hashed passwords, they won't work.
-            // Let's look at the file content again.
-            // modify: I will use plain text to be consistent with "Security Preferences". 
-            // 'password' => $_POST['password'],
+            'password' => $_POST['password'],
             'role' => 'kasir',
             'email' => $_POST['email'],
             'no_telp' => $_POST['no_telp'],
@@ -55,18 +46,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'shift' => $_POST['shift'],
             'status' => 'active',
             'nik' => $_POST['nik'],
+            'foto' => $foto_path,
             'created_at' => date('Y-m-d H:i:s')
         ];
         
-        $sql = "INSERT INTO users (" . implode(', ', array_keys($data)) . ") 
-                VALUES (:" . implode(', :', array_keys($data)) . ")";
-        $stmt = $conn->prepare($sql);
-        $stmt->execute($data);
-        
-        header('Location: karyawan.php?success=Karyawan berhasil ditambahkan');
-        exit;
+        try {
+            $sql = "INSERT INTO users (" . implode(', ', array_keys($data)) . ") 
+                    VALUES (:" . implode(', :', array_keys($data)) . ")";
+            $stmt = $conn->prepare($sql);
+            $stmt->execute($data);
+            
+            header('Location: karyawan.php?success=Karyawan berhasil ditambahkan');
+            exit;
+        } catch (PDOException $e) {
+            header('Location: karyawan.php?action=add&error=Gagal menambahkan karyawan: ' . $e->getMessage());
+            exit;
+        }
     }
     elseif ($action === 'edit' && $id) {
+        // Check if username or email already exists for another user
+        $check_stmt = $conn->prepare("SELECT id FROM users WHERE (username = :username OR email = :email) AND id != :id");
+        $check_stmt->execute(['username' => $_POST['username'], 'email' => $_POST['email'], 'id' => $id]);
+        if ($check_stmt->fetch()) {
+            header('Location: karyawan.php?action=edit&id=' . $id . '&error=Username atau Email sudah digunakan');
+            exit;
+        }
+
         $data = [
             'username' => $_POST['username'],
             'nama' => $_POST['nama'],
@@ -79,8 +84,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'updated_at' => date('Y-m-d H:i:s')
         ];
         
+        // Handle photo upload
+        if (!empty($_FILES['foto']['name'])) {
+            $upload = upload_file($_FILES['foto'], '../assets/uploads/users/');
+            if ($upload['success']) {
+                $data['foto'] = 'assets/uploads/users/' . $upload['filename'];
+            }
+        }
+
         if (!empty($_POST['password'])) {
-            $data['password'] = $_POST['password']; // Plain text
+            $data['password'] = $_POST['password']; 
         }
         
         $setClause = [];
@@ -88,13 +101,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $setClause[] = "$key = :$key";
         }
         
-        $sql = "UPDATE users SET " . implode(', ', $setClause) . " WHERE id = :id";
-        $data['id'] = $id;
-        $stmt = $conn->prepare($sql);
-        $stmt->execute($data);
-        
-        header('Location: karyawan.php?success=Data karyawan berhasil diupdate');
-        exit;
+        try {
+            $sql = "UPDATE users SET " . implode(', ', $setClause) . " WHERE id = :id";
+            $data['id'] = $id;
+            $stmt = $conn->prepare($sql);
+            $stmt->execute($data);
+            
+            header('Location: karyawan.php?success=Data karyawan berhasil diupdate');
+            exit;
+        } catch (PDOException $e) {
+            header('Location: karyawan.php?action=edit&id=' . $id . '&error=Gagal mengupdate data: ' . $e->getMessage());
+            exit;
+        }
     }
 }
 
@@ -705,11 +723,14 @@ if ($id && $action === 'edit') {
                 <table>
                     <thead>
                         <tr>
+                            <th>Foto</th>
                             <th>Kode</th>
                             <th>Nama</th>
+                            <th>NIK</th>
                             <th>Username</th>
                             <th>Email</th>
                             <th>No. Telp</th>
+                            <th>Alamat</th>
                             <th>Shift</th>
                             <th>Status</th>
                             <th>Aksi</th>
@@ -726,14 +747,24 @@ if ($id && $action === 'edit') {
                         <?php else: ?>
                             <?php foreach ($karyawan as $k): ?>
                             <tr>
-                                <td><?php echo htmlspecialchars($k['user_code']); ?></td>
                                 <td>
-                                    <div style="font-weight: 600;"><?php echo htmlspecialchars($k['nama']); ?></div>
-                                    <div style="font-size: 12px; color: var(--text-light);">NIK: <?php echo htmlspecialchars($k['nik']); ?></div>
+                                    <?php if (!empty($k['foto'])): ?>
+                                        <img src="../<?php echo htmlspecialchars($k['foto']); ?>" alt="Avatar" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid var(--primary);">
+                                    <?php else: ?>
+                                        <div style="width: 40px; height: 40px; border-radius: 50%; background: #E5E7EB; display: flex; align-items: center; justify-content: center; color: #9CA3AF;">
+                                            <i class="fas fa-user"></i>
+                                        </div>
+                                    <?php endif; ?>
                                 </td>
+                                <td><?php echo htmlspecialchars($k['user_code']); ?></td>
+                                <td style="font-weight: 600;"><?php echo htmlspecialchars($k['nama']); ?></td>
+                                <td><?php echo htmlspecialchars($k['nik']); ?></td>
                                 <td><?php echo htmlspecialchars($k['username']); ?></td>
                                 <td><?php echo htmlspecialchars($k['email']); ?></td>
                                 <td><?php echo htmlspecialchars($k['no_telp']); ?></td>
+                                <td style="max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="<?php echo htmlspecialchars($k['alamat'] ?? ''); ?>">
+                                    <?php echo htmlspecialchars($k['alamat'] ?? '-'); ?>
+                                </td>
                                 <td><?php echo htmlspecialchars($k['shift'] ?? '-'); ?></td>
                                 <td>
                                     <?php if ($k['status'] === 'active'): ?>
@@ -770,12 +801,23 @@ if ($id && $action === 'edit') {
                     <i class="fas fa-times"></i>
                 </button>
             </div>
-            <form method="POST" action="karyawan.php?action=<?php echo $action; ?><?php echo $id ? '&id=' . $id : ''; ?>">
+            <form method="POST" action="karyawan.php?action=<?php echo $action; ?><?php echo $id ? '&id=' . $id : ''; ?>" enctype="multipart/form-data">
                 <div class="modal-body">
                     <div class="form-group">
                         <label for="nama">Nama Lengkap *</label>
                         <input type="text" id="nama" name="nama" class="form-control" 
                                value="<?php echo htmlspecialchars($karyawan_detail['nama'] ?? ''); ?>" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="foto">Foto Karyawan</label>
+                        <?php if (!empty($karyawan_detail['foto'])): ?>
+                            <div style="margin-bottom: 10px;">
+                                <img src="../<?php echo htmlspecialchars($karyawan_detail['foto']); ?>" alt="Current Photo" style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover;">
+                                <p style="font-size: 12px; color: var(--text-light);">Foto saat ini</p>
+                            </div>
+                        <?php endif; ?>
+                        <input type="file" id="foto" name="foto" class="form-control" accept="image/*">
                     </div>
                     
                     <div class="form-group">
