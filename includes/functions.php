@@ -214,11 +214,11 @@ function create_slug($string) {
 function get_setting($name) {
     global $conn;
     
-    $stmt = $conn->prepare("SELECT isi_setting FROM settings WHERE nama_setting = :name");
+    $stmt = $conn->prepare("SELECT setting_value FROM settings WHERE setting_key = :name");
     $stmt->execute([':name' => $name]);
     $result = $stmt->fetch(PDO::FETCH_ASSOC);
     
-    return $result['isi_setting'] ?? null;
+    return $result['setting_value'] ?? null;
 }
 
 // Log activity

@@ -1,10 +1,16 @@
 <?php
 require_once '../config/database.php';
+require_once __DIR__ . '/functions.php'; // Fix: undefined function error
 
 $trx_code = $_GET['trx'] ?? '';
 
 $db = new Database();
 $conn = $db->getConnection();
+
+// Get store logo
+$stmt_logo = $conn->prepare("SELECT setting_value FROM settings WHERE setting_key = 'store_logo'");
+$stmt_logo->execute();
+$logo_path = $stmt_logo->fetchColumn();
 
 // Get transaction details
 $query = "SELECT t.*, u.nama as customer_name, u.alamat, u.no_telp, 
@@ -39,6 +45,7 @@ $items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Invoice <?php echo $transaksi['kode_transaksi']; ?></title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * {
             margin: 0;
@@ -61,16 +68,39 @@ $items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
             overflow: hidden;
         }
         
+        /* Green Theme (Emerald) */
         .invoice-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #10B981 0%, #059669 100%);
             color: white;
             padding: 40px;
             text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .header-bg-icon {
+            position: absolute;
+            top: -20px;
+            right: -20px;
+            font-size: 150px;
+            opacity: 0.1;
+            color: white;
+            transform: rotate(15deg);
+        }
+
+        .invoice-logo-img {
+            max-height: 80px;
+            margin-bottom: 15px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 8px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
         
         .invoice-header h1 {
             font-size: 32px;
             margin-bottom: 8px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         
         .invoice-header p {
@@ -197,23 +227,24 @@ $items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
             color: #D97706;
         }
         
+        /* Updated Button Color */
         .print-button {
             position: fixed;
             bottom: 30px;
             right: 30px;
             padding: 16px 32px;
-            background: #3B82F6;
+            background: #10B981; /* Emerald */
             color: white;
             border: none;
             border-radius: 12px;
             font-weight: 600;
             cursor: pointer;
-            box-shadow: 0 10px 30px rgba(59, 130, 246, 0.4);
+            box-shadow: 0 10px 30px rgba(16, 185, 129, 0.4);
             transition: all 0.3s;
         }
         
         .print-button:hover {
-            background: #2563EB;
+            background: #059669;
             transform: translateY(-2px);
         }
         
@@ -221,6 +252,8 @@ $items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
             body {
                 background: white;
                 padding: 0;
+                -webkit-print-color-adjust: exact; 
+                print-color-adjust: exact;
             }
             
             .invoice-container {
@@ -238,8 +271,20 @@ $items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
     <div class="invoice-container">
         <!-- Header -->
         <div class="invoice-header">
+            <!-- Background Icon Decoration -->
+            <i class="fas fa-layer-group header-bg-icon"></i>
+            
+            <?php 
+            // Use DB logo if valid, otherwise use layer.png as requested
+            $logo_src = ($logo_path && file_exists('../' . $logo_path)) ? '../' . $logo_path : '../assets/img/layer.png';
+            ?>
+            
+            <div style="display: flex; justify-content: center; margin-bottom: 15px;">
+                <img src="<?php echo $logo_src; ?>" alt="Logo" class="invoice-logo-img" onerror="this.src='../assets/img/layer.png'">
+            </div>
+            
             <h1>INVOICE</h1>
-            <p>No. <?php echo $transaksi['kode_transaksi']; ?></p>
+            <p style="letter-spacing: 2px; font-weight: 500;">No. <?php echo $transaksi['kode_transaksi']; ?></p>
         </div>
         
         <!-- Body -->
