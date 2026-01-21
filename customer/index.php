@@ -1379,5 +1379,7 @@ foreach ($featured_products as $p) {
             }
         }
     </script>
+
+<?php include '../includes/chat_widget.php'; ?>
 </body>
 </html>

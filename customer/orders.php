@@ -666,5 +666,7 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
             }
         }
     </script>
+
+<?php include '../includes/chat_widget.php'; ?>
 </body>
 </html>

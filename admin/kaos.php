@@ -915,6 +915,12 @@ if ($id && $action === 'edit') {
                         Kelola Kaos
                     </a>
                 </li>
+                <li class="nav-item">
+                    <a href="chat.php" class="nav-link">
+                        <i class="fas fa-comments"></i>
+                        Live Chat
+                    </a>
+                </li>
 
                 <li class="nav-item">
                     <a href="laporan.php" class="nav-link">

@@ -105,6 +105,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: settings.php?tab=payment&success=Pengaturan pembayaran berhasil disimpan');
         exit;
     }
+    elseif ($action === 'update_hours') {
+        $offline_open = $_POST['offline_open'];
+        $offline_close = $_POST['offline_close'];
+        $offline_closed_days = isset($_POST['offline_closed_days']) ? array_map('intval', $_POST['offline_closed_days']) : [];
+        
+        $online_open = $_POST['online_open'];
+        $online_close = $_POST['online_close'];
+        $online_closed_days = isset($_POST['online_closed_days']) ? array_map('intval', $_POST['online_closed_days']) : [];
+        
+        $offline_json = json_encode([
+            'open' => $offline_open,
+            'close' => $offline_close,
+            'closed_days' => $offline_closed_days
+        ]);
+        
+        $online_json = json_encode([
+            'open' => $online_open,
+            'close' => $online_close,
+            'closed_days' => $online_closed_days
+        ]);
+        
+        $stmt = $conn->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('jam_operasional_offline', :val1) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
+        $stmt->execute(['val1' => $offline_json]);
+        
+        $stmt = $conn->prepare("INSERT INTO settings (setting_key, setting_value) VALUES ('jam_operasional_online', :val2) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
+        $stmt->execute(['val2' => $online_json]);
+        
+        header('Location: settings.php?tab=hours&success=Jam operasional berhasil diupdate');
+        exit;
+    }
 }
 
 // Get all settings
@@ -122,6 +152,11 @@ $stmt = $conn->query($query);
 $shipping_rates = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $active_tab = $_GET['tab'] ?? 'general';
+
+// Decode Hours
+$offline_data = json_decode($settings['jam_operasional_offline'] ?? '{"open":"10:00","close":"20:00","closed_days":[]}', true);
+$online_data = json_decode($settings['jam_operasional_online'] ?? '{"open":"09:00","close":"17:00","closed_days":[]}', true);
+$days_map = [0 => 'Minggu', 1 => 'Senin', 2 => 'Selasa', 3 => 'Rabu', 4 => 'Kamis', 5 => 'Jumat', 6 => 'Sabtu'];
 ?>
 
 <!DOCTYPE html>
@@ -475,6 +510,12 @@ $active_tab = $_GET['tab'] ?? 'general';
                         Kelola Kaos
                     </a>
                 </li>
+                <li class="nav-item">
+                    <a href="chat.php" class="nav-link">
+                        <i class="fas fa-comments"></i>
+                        Live Chat
+                    </a>
+                </li>
 
                 <li class="nav-item">
                     <a href="laporan.php" class="nav-link">
@@ -530,10 +571,14 @@ $active_tab = $_GET['tab'] ?? 'general';
                 <a href="?tab=payment" class="tab-item <?php echo $active_tab == 'payment' ? 'active' : ''; ?>">
                     <i class="fas fa-money-bill"></i> Pembayaran
                 </a>
+                <a href="?tab=hours" class="tab-item <?php echo $active_tab == 'hours' ? 'active' : ''; ?>">
+                    <i class="fas fa-clock"></i> Jam Operasional
+                </a>
             </div>
             
             <div class="content-card">
                 <?php if ($active_tab == 'general'): ?>
+                    <!-- ... general form ... -->
                     <form method="POST" action="settings.php" enctype="multipart/form-data">
                         <input type="hidden" name="action" value="update_general">
                         
@@ -662,6 +707,67 @@ $active_tab = $_GET['tab'] ?? 'general';
                             <button type="submit" class="btn btn-primary">Simpan</button>
                         </div>
                     </form>
+
+                <?php elseif ($active_tab == 'hours'): ?>
+                    <form method="POST" action="settings.php">
+                        <input type="hidden" name="action" value="update_hours">
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                            <!-- Offline Store -->
+                            <div style="background: rgba(255,255,255,0.5); padding: 20px; border-radius: 12px; border: 1px solid rgba(16,185,129,0.1);">
+                                <h3 style="margin-bottom: 16px; color: var(--primary);">Toko Offline</h3>
+                                <div class="form-group">
+                                    <label>Jam Buka</label>
+                                    <input type="time" name="offline_open" class="form-control" value="<?php echo htmlspecialchars($offline_data['open'] ?? '10:00'); ?>">
+                                </div>
+                                <div class="form-group">
+                                    <label>Jam Tutup</label>
+                                    <input type="time" name="offline_close" class="form-control" value="<?php echo htmlspecialchars($offline_data['close'] ?? '20:00'); ?>">
+                                </div>
+                                <div class="form-group">
+                                    <label>Hari Tutup (Libur):</label>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                        <?php foreach ($days_map as $num => $day): ?>
+                                            <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; font-size: 14px;">
+                                                <input type="checkbox" name="offline_closed_days[]" value="<?php echo $num; ?>" 
+                                                    <?php echo in_array($num, $offline_data['closed_days'] ?? []) ? 'checked' : ''; ?>>
+                                                <?php echo $day; ?>
+                                            </label>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Online Store -->
+                             <div style="background: rgba(255,255,255,0.5); padding: 20px; border-radius: 12px; border: 1px solid rgba(16,185,129,0.1);">
+                                <h3 style="margin-bottom: 16px; color: var(--secondary);">Layanan Online</h3>
+                                <div class="form-group">
+                                    <label>Jam Mulai Chat</label>
+                                    <input type="time" name="online_open" class="form-control" value="<?php echo htmlspecialchars($online_data['open'] ?? '09:00'); ?>">
+                                </div>
+                                <div class="form-group">
+                                    <label>Jam Selesai Chat</label>
+                                    <input type="time" name="online_close" class="form-control" value="<?php echo htmlspecialchars($online_data['close'] ?? '17:00'); ?>">
+                                </div>
+                                <div class="form-group">
+                                    <label>Hari Off (Slow Response):</label>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                        <?php foreach ($days_map as $num => $day): ?>
+                                            <label style="display: flex; align-items: center; gap: 8px; font-weight: normal; font-size: 14px;">
+                                                <input type="checkbox" name="online_closed_days[]" value="<?php echo $num; ?>" 
+                                                    <?php echo in_array($num, $online_data['closed_days'] ?? []) ? 'checked' : ''; ?>>
+                                                <?php echo $day; ?>
+                                            </label>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; justify-content: flex-end; margin-top: 24px;">
+                            <button type="submit" class="btn btn-primary">Simpan Jam Operasional</button>
+                        </div>
+                     </form>
                 <?php endif; ?>
             </div>
         </main>

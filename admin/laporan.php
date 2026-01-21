@@ -436,6 +436,12 @@ foreach ($daily_sales as $day) {
                     </a>
                 </li>
                 <li class="nav-item">
+                    <a href="chat.php" class="nav-link">
+                        <i class="fas fa-comments"></i>
+                        Live Chat
+                    </a>
+                </li>
+                <li class="nav-item">
                     <a href="laporan.php" class="nav-link active">
                         <i class="fas fa-chart-line"></i>
                         Laporan

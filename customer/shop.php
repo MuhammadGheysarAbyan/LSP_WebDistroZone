@@ -1029,5 +1029,7 @@ if (isset($_SESSION['user_id'])) {
             Swal.fire({ text: msg, icon: 'success', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000 });
         }
     </script>
+
+<?php include '../includes/chat_widget.php'; ?>
 </body>
 </html>
