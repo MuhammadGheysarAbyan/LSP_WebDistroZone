@@ -1149,7 +1149,8 @@ if ($id && $action === 'edit') {
                                         <tr>
                                             <th>Warna</th>
                                             <th>Ukuran (Checklist)</th>
-                                            <th>Harga</th>
+                                            <th>Harga Pokok</th>
+                                            <th>Harga Jual</th>
                                             <th>Stok</th>
                                             <th>Foto</th>
                                             <th></th>
@@ -1177,8 +1178,10 @@ if ($id && $action === 'edit') {
                                                     </div>
                                                 </td>
                                                 <td>
-                                                    <input type="number" name="harga[0]" class="form-control" placeholder="Harga" style="font-weight: 700; font-size: 18px; width: 180px; color: var(--primary);">
-                                                    <input type="hidden" name="harga_pokok[0]" value="0">
+                                                    <input type="number" name="harga_pokok[0]" class="form-control" placeholder="Harga Pokok" style="width: 120px;" value="0">
+                                                </td>
+                                                <td>
+                                                    <input type="number" name="harga[0]" class="form-control" placeholder="Harga Jual" style="font-weight: 700; font-size: 16px; width: 130px; color: var(--primary);">
                                                 </td>
                                                 <td><input type="number" name="stok[0]" class="form-control" value="0" style="width: 70px;"></td>
                                                 <td><input type="file" name="foto_varian[0]" class="form-control" style="width: 150px;"></td>
@@ -1203,7 +1206,8 @@ if ($id && $action === 'edit') {
                                                             <?php endforeach; ?>
                                                         </div>
                                                     </td>
-                                                    <td><input type="number" name="harga[<?php echo $idx; ?>]" class="form-control" placeholder="Harga" value="<?php echo round($gv['harga']); ?>" style="font-weight: 700; font-size: 18px; width: 180px; color: var(--primary);"></td>
+                                                    <td><input type="number" name="harga_pokok[<?php echo $idx; ?>]" class="form-control" placeholder="Harga Pokok" value="<?php echo round($gv['harga_pokok']); ?>" style="width: 120px;"></td>
+                                                    <td><input type="number" name="harga[<?php echo $idx; ?>]" class="form-control" placeholder="Harga Jual" value="<?php echo round($gv['harga']); ?>" style="font-weight: 700; font-size: 16px; width: 130px; color: var(--primary);"></td>
                                                     <td><input type="number" name="stok[<?php echo $idx; ?>]" class="form-control" value="<?php echo $gv['stok']; ?>" style="width: 70px;"></td>
                                                     <td>
                                                         <input type="file" name="foto_varian[<?php echo $idx; ?>]" class="form-control" style="width: 150px;">
@@ -1211,7 +1215,7 @@ if ($id && $action === 'edit') {
                                                             <div style="font-size: 10px; color: var(--primary);">Ada foto</div>
                                                         <?php endif; ?>
                                                     </td>
-                                                    <input type="hidden" name="harga_pokok[<?php echo $idx; ?>]" value="<?php echo round($gv['harga_pokok']); ?>">
+
                                                     <td><button type="button" class="btn-icon delete" onclick="removeVariantRow(this)"><i class="fas fa-times"></i></button></td>
                                                 </tr>
                                             <?php $idx++; endforeach; ?>
@@ -1274,8 +1278,10 @@ if ($id && $action === 'edit') {
                 </td>
                 <td>${sizeHtml}</td>
                 <td>
-                    <input type="number" name="harga[${idx}]" class="form-control" placeholder="Harga" style="font-weight: 700; font-size: 18px; width: 180px; color: var(--primary);">
-                    <input type="hidden" name="harga_pokok[${idx}]" value="0">
+                    <input type="number" name="harga_pokok[${idx}]" class="form-control" placeholder="Harga Pokok" style="width: 120px;" value="0">
+                </td>
+                <td>
+                    <input type="number" name="harga[${idx}]" class="form-control" placeholder="Harga Jual" style="font-weight: 700; font-size: 16px; width: 130px; color: var(--primary);">
                 </td>
                 <td><input type="number" name="stok[${idx}]" class="form-control" value="0" style="width: 70px;"></td>
                 <td><input type="file" name="foto_varian[${idx}]" class="form-control" style="width: 150px;"></td>
