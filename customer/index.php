@@ -1331,7 +1331,11 @@ foreach ($featured_products as $p) {
                     showCancelButton: true,
                     confirmButtonColor: '#10B981',
                     confirmButtonText: 'Login Sekarang',
-                    cancelButtonText: 'Nanti'
+                    cancelButtonText: 'Nanti',
+                    backdrop: true,
+                    customClass: {
+                        container: 'swal-on-top'
+                    }
                 }).then((result) => {
                     if (result.isConfirmed) {
                         window.location.href = '../auth/login.php';

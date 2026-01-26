@@ -227,6 +227,11 @@ $items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
             color: #D97706;
         }
         
+        .status-danger {
+            background: #FEE2E2;
+            color: #DC2626;
+        }
+        
         /* Updated Button Color */
         .print-button {
             position: fixed;
@@ -310,8 +315,10 @@ $items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
                     <?php endif; ?>
                     <p>Tanggal: <?php echo format_datetime($transaksi['created_at']); ?></p>
                     
-                    <?php if($transaksi['status'] == 'completed' || $transaksi['status'] == 'verified'): ?>
-                        <span class="status-badge status-success">LUNAS</span>
+                    <?php if($transaksi['status'] == 'cancelled'): ?>
+                        <span class="status-badge status-danger">BATAL</span>
+                    <?php elseif($transaksi['status'] == 'completed' || $transaksi['status'] == 'verified'): ?>
+                        <span class="status-badge status-success">SELESAI</span>
                     <?php else: ?>
                         <span class="status-badge status-warning">PENDING</span>
                     <?php endif; ?>
