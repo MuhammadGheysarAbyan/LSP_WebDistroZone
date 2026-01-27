@@ -23,7 +23,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (empty($username) || empty($password)) {
         $error = "Silakan isi username dan password!";
     } else {
-        $query = "SELECT * FROM users WHERE username = :username AND role = :role AND status = 'active' LIMIT 1";
+        // Query dengan cek platform untuk kasir web
+        if ($role == 'kasir') {
+            $query = "SELECT * FROM users WHERE username = :username AND role = :role AND status = 'active' AND (platform = 'web' OR platform = 'all') LIMIT 1";
+        } else {
+            $query = "SELECT * FROM users WHERE username = :username AND role = :role AND status = 'active' LIMIT 1";
+        }
         $stmt = $conn->prepare($query);
         $stmt->bindParam(':username', $username);
         $stmt->bindParam(':role', $role);

@@ -60,11 +60,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $conn->beginTransaction();
         
         try {
-            // Create transaction
+            // Create transaction - platform = 'web' untuk transaksi online
             $kode_transaksi = generate_code('TRX');
             $query_trx = "INSERT INTO transaksi (kode_transaksi, customer_id, total, shipping_city, shipping_address,
-                          shipping_cost, grand_total, tanggal, payment_method, status, waktu, created_at) 
-                          VALUES (:kode, :customer, :total, :city, :address, :shipping, :grand, CURDATE(), :payment, 'pending', NOW(), NOW())";
+                          shipping_cost, grand_total, tanggal, payment_method, status, platform, waktu, created_at) 
+                          VALUES (:kode, :customer, :total, :city, :address, :shipping, :grand, CURDATE(), :payment, 'pending', 'web', NOW(), NOW())";
             
             $stmt_trx = $conn->prepare($query_trx);
             $stmt_trx->execute([

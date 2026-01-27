@@ -13,8 +13,19 @@ $conn = $db->getConnection();
 $start_date = $_GET['start_date'] ?? date('Y-m-01');
 $end_date = $_GET['end_date'] ?? date('Y-m-d');
 
-// Filter clause for queries - only include verified/completed transactions
-$date_filter = "WHERE DATE(t.created_at) BETWEEN '$start_date' AND '$end_date' AND t.status IN ('verified', 'completed')";
+// Platform Filter
+$platform = $_GET['platform'] ?? 'all';
+
+// Base filter clause
+$date_filter = "WHERE DATE(t.created_at) BETWEEN '$start_date' AND '$end_date'";
+
+// Status filter - include valid completed transactions
+$date_filter .= " AND t.status IN ('verified', 'completed', 'paid', 'sent')";
+
+// Platform filter logic
+if ($platform != 'all') {
+    $date_filter .= " AND t.platform = '$platform'";
+}
 
 // 1. Summary Statistics
 $query = "SELECT 
@@ -488,6 +499,14 @@ foreach ($daily_sales as $day) {
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <span style="color: var(--text-light); font-size: 14px;">Sampai:</span>
                         <input type="date" name="end_date" value="<?php echo $end_date; ?>" class="date-input">
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="color: var(--text-light); font-size: 14px;">Platform:</span>
+                        <select name="platform" class="date-input" style="cursor: pointer;">
+                            <option value="all" <?php echo $platform == 'all' ? 'selected' : ''; ?>>Semua</option>
+                            <option value="desktop" <?php echo $platform == 'desktop' ? 'selected' : ''; ?>>Desktop (Kasir)</option>
+                            <option value="web" <?php echo $platform == 'web' ? 'selected' : ''; ?>>Web (Online)</option>
+                        </select>
                     </div>
                     <button type="submit" class="btn btn-primary">
                         <i class="fas fa-filter"></i> Filter

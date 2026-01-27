@@ -505,6 +505,7 @@ foreach ($top_categories as $cat) {
                         <thead>
                             <tr>
                                 <th>Kode Transaksi</th>
+                                <th>Platform</th>
                                 <th>Customer</th>
                                 <th>Tanggal</th>
                                 <th>Total</th>
@@ -517,9 +518,16 @@ foreach ($top_categories as $cat) {
                                 <td>
                                     <span style="font-weight: 600; color: var(--primary);"><?php echo $trx['kode_transaksi']; ?></span>
                                 </td>
+                                <td>
+                                    <?php if(isset($trx['platform']) && $trx['platform'] == 'web'): ?>
+                                        <span class="badge" style="background: #E0F2FE; color: #0EA5E9;"><i class="fas fa-globe"></i> Web</span>
+                                    <?php else: ?>
+                                        <span class="badge" style="background: #F3F4F6; color: #6B7280;"><i class="fas fa-desktop"></i> Desktop</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td><?php echo $trx['customer_name'] ?? 'Guest'; ?></td>
                                 <td><?php echo format_datetime($trx['created_at']); ?></td>
-                                <td style="font-weight: 600;"><?php echo format_rupiah($trx['grand_total']); ?></td>
+                                <td><?php echo format_rupiah($trx['grand_total']); ?></td>
                                 <td>
                                     <?php if($trx['status'] == 'completed' || $trx['status'] == 'verified'): ?>
                                         <span class="badge badge-success">Selesai</span>

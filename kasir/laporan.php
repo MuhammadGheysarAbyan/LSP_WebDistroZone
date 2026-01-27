@@ -15,7 +15,7 @@ $kasir_id = $_SESSION['user_id'];
 $start_date = $_GET['start_date'] ?? date('Y-m-01');
 $end_date = $_GET['end_date'] ?? date('Y-m-t');
 
-// Get sales summary for this kasir
+// Get sales summary for this kasir (web transactions only)
 $query = "SELECT 
             COUNT(*) as total_transactions,
             SUM(grand_total) as total_revenue,
@@ -23,7 +23,8 @@ $query = "SELECT
           FROM transaksi 
           WHERE DATE(tanggal) BETWEEN :start_date AND :end_date
           AND kasir_id = :kasir_id
-          AND status IN ('completed', 'verified')";
+          AND status IN ('completed', 'verified')
+          AND (platform = 'web' OR platform IS NULL)";
 $stmt = $conn->prepare($query);
 $stmt->execute([
     'start_date' => $start_date, 
