@@ -30,6 +30,14 @@ function getContrastColor($hex) {
     return ($yiq >= 128) ? 'black' : 'white';
 }
 
+// Helper to generate consistent kode_varian (KV-001-01 format)
+function generateKodeVarian($conn, $master_id) {
+    $stmt = $conn->prepare("SELECT COUNT(*) as cnt FROM kaos_varian WHERE kaos_master_id = :mid");
+    $stmt->execute(['mid' => $master_id]);
+    $count = $stmt->fetch(PDO::FETCH_ASSOC)['cnt'] + 1;
+    return 'KV-' . str_pad($master_id, 3, '0', STR_PAD_LEFT) . '-' . str_pad($count, 2, '0', STR_PAD_LEFT);
+}
+
 // Handle actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $conn->beginTransaction();
@@ -79,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     foreach ($posted_sizes as $size) {
                         $v_data = [
                             'kaos_master_id' => $master_id,
-                            'kode_varian' => $master_data['nama_kaos'].'-'.$warna.'-'.$size.'-'.time() . '-' . uniqid(),
+                            'kode_varian' => generateKodeVarian($conn, $master_id),
                             'warna' => $warna,
                             'warna_hex' => $_POST['warna_hex'][$i] ?? '#000000',
                             'size' => $size,
@@ -169,7 +177,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         } else {
                             $v_data = [
                                 'kaos_master_id' => $id,
-                                'kode_varian' => $master_data['nama_kaos'].'-'.$warna.'-'.$size.'-'.time() . '-' . uniqid(),
+                                'kode_varian' => generateKodeVarian($conn, $id),
                                 'warna' => $warna,
                                 'warna_hex' => $_POST['warna_hex'][$i] ?? '#000000',
                                 'size' => $size,

@@ -1,7 +1,7 @@
 <?php
 class Database {
     private $host = "localhost";
-    private $db_name = "DISTROZONE_DB";
+    private $db_name = "distrozone_db";
     private $username = "root";
     private $password = "";
     public $conn;
