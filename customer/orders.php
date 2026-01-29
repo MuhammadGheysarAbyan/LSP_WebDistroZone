@@ -65,9 +65,11 @@ $query = "SELECT t.*,
           END as status_text,
           t.cancelled_by, t.cancel_reason,
           COUNT(dt.id) as total_items,
-          (SELECT COUNT(*) FROM payment_proof pp WHERE pp.transaksi_id = t.id) as has_payment_proof
+          (SELECT COUNT(*) FROM payment_proof pp WHERE pp.transaksi_id = t.id) as has_payment_proof,
+          sr.estimasi
           FROM transaksi t
           LEFT JOIN detail_transaksi dt ON t.id = dt.transaksi_id
+          LEFT JOIN shipping_rates sr ON t.shipping_city = sr.wilayah
           WHERE t.customer_id = :customer_id
           GROUP BY t.id
           ORDER BY t.created_at DESC";
@@ -515,6 +517,12 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <span class="detail-label">Tujuan Pengiriman</span>
                                 <span class="detail-value"><?php echo htmlspecialchars($order['shipping_city']); ?></span>
                             </div>
+                            <?php if(isset($order['estimasi'])): ?>
+                            <div class="detail-row">
+                                <span class="detail-label">Estimasi Tiba</span>
+                                <span class="detail-value" style="color: var(--primary);"><i class="fas fa-truck"></i> <?php echo htmlspecialchars($order['estimasi']); ?></span>
+                            </div>
+                            <?php endif; ?>
                             <?php endif; ?>
                         </div>
                         

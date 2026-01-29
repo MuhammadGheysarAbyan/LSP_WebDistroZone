@@ -1385,5 +1385,23 @@ foreach ($featured_products as $p) {
     </script>
 
 <?php include '../includes/chat_widget.php'; ?>
+    <script>
+        // Check for messages
+        const urlParams = new URLSearchParams(window.location.search);
+        const msg = urlParams.get('msg');
+        
+        if (msg === 'account_deleted') {
+            Swal.fire({
+                title: 'Akun Terhapus',
+                text: 'Akun Anda telah berhasil dihapus secara permanen. Terima kasih telah berbelanja di DistroZone.',
+                icon: 'success',
+                confirmButtonColor: '#10B981',
+                confirmButtonText: 'OK'
+            }).then(() => {
+                // Remove query param
+                window.history.replaceState({}, document.title, window.location.pathname);
+            });
+        }
+    </script>
 </body>
 </html>

@@ -442,7 +442,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                             <select name="shipping_city" id="shipping_city" required onchange="calculateShipping()">
                                 <option value="">Pilih wilayah...</option>
                                 <?php foreach($shipping_rates as $rate): ?>
-                                    <option value="<?php echo $rate['wilayah']; ?>" data-cost="<?php echo $rate['cost_per_kg']; ?>">
+                                    <option value="<?php echo $rate['wilayah']; ?>" 
+                                            data-cost="<?php echo $rate['cost_per_kg']; ?>"
+                                            data-estimasi="<?php echo isset($rate['estimasi']) ? $rate['estimasi'] : '2-3 Hari'; ?>">
                                         <?php echo $rate['wilayah']; ?> - <?php echo format_rupiah($rate['cost_per_kg']); ?>/kg
                                     </option>
                                 <?php endforeach; ?>
@@ -460,8 +462,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         <div class="form-group">
                             <label>Metode Pembayaran</label>
                             <select name="payment_method" required>
-                                <option value="transfer">Transfer Bank (BCA / Mandiri)</option>
-                                <option value="qris">QRIS (GoPay / OVO / Dana)</option>
+                                <option value="Transfer BCA">Transfer Bank - BCA</option>
+                                <option value="Transfer BRI">Transfer Bank - BRI</option>
+                                <option value="Transfer BSI">Transfer Bank - BSI</option>
+                                <option value="QRIS">QRIS (GoPay / OVO / Dana)</option>
                             </select>
                         </div>
                         
@@ -516,6 +520,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             const select = document.getElementById('shipping_city');
             const selectedOption = select.options[select.selectedIndex];
             const costPerKg = selectedOption.getAttribute('data-cost');
+            const estimasi = selectedOption.getAttribute('data-estimasi');
             
             if (costPerKg) {
                 const shippingCost = costPerKg * totalWeight;
@@ -523,9 +528,25 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 
                 document.getElementById('shipping').textContent = formatRupiah(shippingCost);
                 document.getElementById('grandTotal').textContent = formatRupiah(grandTotal);
+                
+                // Update estimation text if element exists, or create it
+                let estimasiEl = document.getElementById('estimasi-info');
+                if (!estimasiEl) {
+                    const shippingInfo = document.querySelector('.shipping-info');
+                    estimasiEl = document.createElement('div');
+                    estimasiEl.id = 'estimasi-info';
+                    estimasiEl.style.marginTop = '8px';
+                    estimasiEl.style.fontWeight = '600';
+                    shippingInfo.appendChild(estimasiEl);
+                }
+                estimasiEl.innerHTML = '<i class="fas fa-truck"></i> Estimasi Tiba: ' + estimasi;
+                
             } else {
                 document.getElementById('shipping').textContent = 'Rp 0';
                 document.getElementById('grandTotal').textContent = formatRupiah(subtotal);
+                
+                const estimasiEl = document.getElementById('estimasi-info');
+                if (estimasiEl) estimasiEl.remove();
             }
         }
         

@@ -16,6 +16,13 @@ $end_date = $_GET['end_date'] ?? date('Y-m-d');
 // Platform Filter
 $platform = $_GET['platform'] ?? 'all';
 
+// Kasir Filter
+$kasir_id = $_GET['kasir_id'] ?? 'all';
+
+// Fetch Kasir List
+$stmt_kasir = $conn->query("SELECT id, nama FROM users WHERE role = 'kasir' ORDER BY nama");
+$kasir_list = $stmt_kasir->fetchAll(PDO::FETCH_ASSOC);
+
 // Base filter clause
 $date_filter = "WHERE DATE(t.created_at) BETWEEN '$start_date' AND '$end_date'";
 
@@ -25,6 +32,11 @@ $date_filter .= " AND t.status IN ('verified', 'completed', 'paid', 'sent')";
 // Platform filter logic
 if ($platform != 'all') {
     $date_filter .= " AND t.platform = '$platform'";
+}
+
+// Kasir filter logic
+if ($kasir_id != 'all') {
+    $date_filter .= " AND t.kasir_id = '$kasir_id'";
 }
 
 // 1. Summary Statistics
@@ -506,6 +518,17 @@ foreach ($daily_sales as $day) {
                             <option value="all" <?php echo $platform == 'all' ? 'selected' : ''; ?>>Semua</option>
                             <option value="desktop" <?php echo $platform == 'desktop' ? 'selected' : ''; ?>>Desktop (Kasir)</option>
                             <option value="web" <?php echo $platform == 'web' ? 'selected' : ''; ?>>Web (Online)</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="color: var(--text-light); font-size: 14px;">Kasir:</span>
+                         <select name="kasir_id" class="date-input" style="cursor: pointer;">
+                            <option value="all" <?php echo $kasir_id == 'all' ? 'selected' : ''; ?>>Semua Kasir</option>
+                            <?php foreach($kasir_list as $k): ?>
+                                <option value="<?php echo $k['id']; ?>" <?php echo $kasir_id == $k['id'] ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($k['nama']); ?>
+                                </option>
+                            <?php endforeach; ?>
                         </select>
                     </div>
                     <button type="submit" class="btn btn-primary">

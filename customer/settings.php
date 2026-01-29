@@ -69,6 +69,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_password'])) {
     }
 }
 
+// Handle Account Deletion
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_account'])) {
+    $password_confirm = $_POST['delete_password_confirm'];
+    
+    // Verify password first
+    $stmt = $conn->prepare("SELECT password FROM users WHERE id = :id");
+    $stmt->execute(['id' => $user_id]);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if ($password_confirm !== $user['password']) {
+        $error_msg = "Password salah. Gagal menghapus akun.";
+    } else {
+        try {
+            $conn->beginTransaction();
+            
+            // 1. Anonymize transactions (set customer_id to NULL)
+            // This keeps the transaction record for financial reports but removes the link to the user
+            $stmt_trx = $conn->prepare("UPDATE transaksi SET customer_id = NULL WHERE customer_id = :id");
+            $stmt_trx->execute(['id' => $user_id]);
+            
+            // 2. Clear cart
+            $stmt_cart = $conn->prepare("DELETE FROM cart WHERE customer_id = :id");
+            $stmt_cart->execute(['id' => $user_id]);
+            
+            // 3. Close chat conversations
+            $stmt_chat = $conn->prepare("UPDATE chat_conversations SET status = 'closed' WHERE customer_id = :id");
+            $stmt_chat->execute(['id' => $user_id]);
+            
+            // 4. Delete user (This will cascade delete chat_messages if configured, otherwise we might need to handle it)
+            // Based on constraints: chat_messages triggers CASCADE on user delete?
+            // Let's check: chat_messages -> sender_id has ON DELETE CASCADE.
+            // chat_conversations -> customer_id has ON DELETE CASCADE.
+            // So deleting user should clean up chats.
+            
+            // However, payment_proof -> customer_id has ON DELETE SET NULL.
+            
+            $stmt_del = $conn->prepare("DELETE FROM users WHERE id = :id");
+            $stmt_del->execute(['id' => $user_id]);
+            
+            $conn->commit();
+            
+            // Logout and redirect
+            session_destroy();
+            header("Location: index.php?msg=account_deleted");
+            exit;
+            
+        } catch (Exception $e) {
+            $conn->rollBack();
+            $error_msg = "Gagal menghapus akun: " . $e->getMessage();
+        }
+    }
+}
+
 // Fetch user data
 $stmt = $conn->prepare("SELECT * FROM users WHERE id = :id");
 $stmt->execute(['id' => $user_id]);
@@ -322,6 +375,78 @@ $user = $stmt->fetch(PDO::FETCH_ASSOC);
                 </button>
             </form>
         </div>
+
+        <div class="settings-card" style="border: 1px solid #FEE2E2;">
+            <h2 class="card-title" style="color: #991B1B;">
+                <i class="fas fa-exclamation-triangle"></i>
+                Hapus Akun
+            </h2>
+            <p style="margin-bottom: 20px; color: #4B5563;">
+                Menghapus akun Anda bersifat permanen. Semua data riwayat pesanan yang terkait dengan akun Anda akan di-anonymize, dan Anda tidak akan bisa login kembali.
+            </p>
+            <button type="button" class="btn" style="background: #EF4444; color: white;" onclick="openDeleteModal()">
+                <i class="fas fa-trash-alt"></i> Hapus Akun Saya
+            </button>
+        </div>
+
+        <!-- Delete Confirmation Modal -->
+        <div id="deleteModal" class="modal">
+            <div class="modal-content">
+                <h3 style="color: #991B1B; margin-bottom: 16px;">Konfirmasi Penghapusan</h3>
+                <p style="margin-bottom: 24px;">Apakah Anda yakin ingin menghapus akun? Tindakan ini tidak dapat dibatalkan. Silakan masukkan password Anda untuk konfirmasi.</p>
+                
+                <form method="POST">
+                    <div class="form-group">
+                        <label for="delete_password_confirm">Password Anda</label>
+                        <input type="password" name="delete_password_confirm" id="delete_password_confirm" class="form-control" required placeholder="Masukkan password...">
+                    </div>
+                    <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                        <button type="button" class="btn btn-secondary" onclick="closeDeleteModal()">Batal</button>
+                        <button type="submit" name="delete_account" class="btn" style="background: #EF4444; color: white;">Ya, Hapus Permanen</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <style>
+             /* Modal Styles Reuse or Add if missing in this file scope */
+            .modal {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.5);
+                z-index: 1000;
+                align-items: center;
+                justify-content: center;
+                backdrop-filter: blur(5px);
+            }
+            .modal.active { display: flex; }
+            .modal-content {
+                background: white;
+                border-radius: 20px;
+                padding: 32px;
+                max-width: 500px;
+                width: 90%;
+            }
+        </style>
+
+        <script>
+            function openDeleteModal() {
+                document.getElementById('deleteModal').classList.add('active');
+            }
+            function closeDeleteModal() {
+                document.getElementById('deleteModal').classList.remove('active');
+            }
+            window.onclick = function(event) {
+                const modal = document.getElementById('deleteModal');
+                if (event.target == modal) {
+                    closeDeleteModal();
+                }
+            }
+        </script>
     </div>
 </body>
 </html>

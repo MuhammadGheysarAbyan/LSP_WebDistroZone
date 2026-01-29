@@ -229,7 +229,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['payment_proof'])) {
                 <div class="amount"><?php echo format_rupiah($transaction['grand_total']); ?></div>
                 
                 <div class="bank-info">
-                    <?php if ($transaction['payment_method'] === 'qris'): ?>
+                    <?php if ($transaction['payment_method'] === 'QRIS'): ?>
                         <h4>Scan QRIS untuk Membayar:</h4>
                         <div style="text-align: center; margin: 20px 0;">
                             <div style="width: 200px; height: 200px; background: #EEE; border: 2px solid #DDD; border-radius: 12px; margin: 0 auto; display: flex; align-items: center; justify-content: center; flex-direction: column;">
@@ -238,15 +238,30 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['payment_proof'])) {
                             </div>
                             <p style="font-size: 12px; color: #64748B; margin-top: 10px;">Gunakan GoPay, OVO, Dana, atau Mobile Banking</p>
                         </div>
-                    <?php else: ?>
-                        <h4>Transfer ke Salah Satu Rekening:</h4>
+                    <?php elseif ($transaction['payment_method'] === 'Transfer BCA'): ?>
+                        <h4>Transfer ke Rekening BCA:</h4>
                         <div class="bank-detail">
                             <span><i class="fas fa-university"></i> BCA</span>
                             <strong>123-456-7890 a/n DistroZone</strong>
                         </div>
+                    <?php elseif ($transaction['payment_method'] === 'Transfer BRI'): ?>
+                         <h4>Transfer ke Rekening BRI:</h4>
                         <div class="bank-detail">
-                            <span><i class="fas fa-university"></i> MANDIRI</span>
-                            <strong>098-765-4321 a/n DistroZone</strong>
+                            <span><i class="fas fa-university"></i> BRI</span>
+                            <strong>002-999-8888 a/n DistroZone</strong>
+                        </div>
+                    <?php elseif ($transaction['payment_method'] === 'Transfer BSI'): ?>
+                         <h4>Transfer ke Rekening BSI:</h4>
+                        <div class="bank-detail">
+                            <span><i class="fas fa-university"></i> BSI</span>
+                            <strong>777-666-5555 a/n DistroZone</strong>
+                        </div>
+                     <?php else: ?>
+                        <!-- Fallback / Legacy -->
+                        <h4>Transfer ke Salah Satu Rekening:</h4>
+                        <div class="bank-detail">
+                            <span><i class="fas fa-university"></i> BCA</span>
+                            <strong>123-456-7890 a/n DistroZone</strong>
                         </div>
                     <?php endif; ?>
                 </div>
