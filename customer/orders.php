@@ -9,10 +9,29 @@ check_customer();
 $db = new Database();
 $conn = $db->getConnection();
 
-// Handle order cancellation
-if (isset($_POST['action']) && $_POST['action'] == 'cancel_order') {
+// Handle POST actions
+if (isset($_POST['action'])) {
     $transaksi_id = $_POST['transaksi_id'];
-    $customer_id = $_SESSION['user_id'];
+    if ($_POST['action'] == 'complete_order') {
+        $customer_id = $_SESSION['user_id'];
+        
+        $chk_sql = "SELECT id FROM transaksi WHERE id = :id AND customer_id = :cid AND (status = 'sent' OR status = 'verified')";
+        $chk_stmt = $conn->prepare($chk_sql);
+        $chk_stmt->execute(['id' => $transaksi_id, 'cid' => $customer_id]);
+        
+        if ($chk_stmt->rowCount() > 0) {
+            $sql = "UPDATE transaksi SET status = 'completed' WHERE id = :id";
+            $stmt = $conn->prepare($sql);
+            if ($stmt->execute(['id' => $transaksi_id])) {
+                header("Location: orders.php?success=Pesanan telah diterima! Terima kasih.");
+                exit;
+            } else {
+                header("Location: orders.php?error=Gagal mengupdate pesanan");
+                exit;
+            }
+        }
+    } else if ($_POST['action'] == 'cancel_order') {
+        $customer_id = $_SESSION['user_id'];
     
     // Verify order belongs to customer and is pending
     $chk_sql = "SELECT id FROM transaksi WHERE id = :id AND customer_id = :cid AND status = 'pending'";
@@ -51,14 +70,17 @@ if (isset($_POST['action']) && $_POST['action'] == 'cancel_order') {
             exit;
         }
     }
+    }
 }
 
 // Get customer orders with payment proof status
 $query = "SELECT t.*, 
           CASE 
-            WHEN t.status = 'pending' THEN 'Menunggu Pembayaran'
-            WHEN t.status = 'verified' THEN 'Sedang Diproses'
-            WHEN t.status = 'completed' THEN 'Selesai'
+            WHEN t.status = 'pending' AND (SELECT COUNT(*) FROM payment_proof pp WHERE pp.transaksi_id = t.id) = 0 THEN 'Menunggu Pembayaran'
+            WHEN t.status = 'pending' AND (SELECT COUNT(*) FROM payment_proof pp WHERE pp.transaksi_id = t.id) > 0 THEN 'Menunggu Verifikasi'
+            WHEN t.status = 'verified' THEN 'Pembayaran Berhasil'
+            WHEN t.status = 'sent' THEN 'Dalam Pengiriman - Pesanan Akan Tiba'
+            WHEN t.status = 'completed' THEN 'Selesai - Pesanan Telah Tiba di Rumah'
             WHEN t.status = 'cancelled' AND t.cancelled_by = 'kasir' THEN 'Ditolak'
             WHEN t.status = 'cancelled' AND t.cancelled_by = 'customer' THEN 'Dibatalkan'
             WHEN t.status = 'cancelled' THEN 'Dibatalkan'
@@ -271,6 +293,7 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         .status-pending { background: #FEF3C7; color: #D97706; }
         .status-verified { background: #DBEAFE; color: #1E40AF; }
+        .status-sent { background: #E0E7FF; color: #4338CA; }
         .status-completed { background: #D1FAE5; color: #059669; }
         .status-cancelled { background: #FEE2E2; color: #DC2626; }
         
@@ -350,6 +373,17 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
         .btn-success:hover {
             transform: translateY(-2px);
             box-shadow: 0 8px 12px -1px rgba(16, 185, 129, 0.4);
+        }
+        
+        .btn-danger {
+            background: #EF4444;
+            color: white;
+            box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.3);
+        }
+        
+        .btn-danger:hover {
+             transform: translateY(-2px);
+            box-shadow: 0 8px 12px -1px rgba(239, 68, 68, 0.4);
         }
         
         .empty-state {
@@ -517,7 +551,14 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <span class="detail-label">Tujuan Pengiriman</span>
                                 <span class="detail-value"><?php echo htmlspecialchars($order['shipping_city']); ?></span>
                             </div>
-                            <?php if(isset($order['estimasi']) && $order['status'] != 'cancelled'): ?>
+                            <?php if($order['status'] == 'completed'): ?>
+                            <div class="detail-row">
+                                <span class="detail-label">Status Pengiriman</span>
+                                <span class="detail-value" style="color: var(--primary); font-weight: 700;">
+                                    <i class="fas fa-check-circle"></i> Pesanan telah sampai kerumah
+                                </span>
+                            </div>
+                            <?php elseif(isset($order['estimasi']) && $order['status'] != 'cancelled'): ?>
                             <div class="detail-row">
                                 <span class="detail-label">Estimasi Tiba</span>
                                 <span class="detail-value" style="color: var(--primary);"><i class="fas fa-truck"></i> <?php echo htmlspecialchars($order['estimasi']); ?></span>
@@ -565,6 +606,12 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             </button>
                         <?php endif; ?>
                         
+                        <?php if($order['status'] == 'sent' || $order['status'] == 'verified'): ?>
+                            <button class="btn btn-primary" onclick="completeOrder('<?php echo $order['id']; ?>')">
+                                <i class="fas fa-check"></i> Pesanan Selesai
+                            </button>
+                        <?php endif; ?>
+                        
                         <?php if($order['status'] == 'completed'): ?>
                             <a href="shop.php" class="btn btn-primary">
                                 <i class="fas fa-shopping-cart"></i> Pesan Lagi
@@ -585,7 +632,6 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <div class="bank-info">
                 <h4><i class="fas fa-info-circle"></i> Rekening Tujuan</h4>
                 <p><strong>BCA:</strong> 123-456-7890 (DistroZone)</p>
-                <p><strong>Mandiri:</strong> 098-765-4321 (DistroZone)</p>
             </div>
             
             <form method="POST" action="upload_payment.php" enctype="multipart/form-data">
@@ -630,6 +676,40 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         function closeUploadModal() {
             document.getElementById('uploadModal').classList.remove('active');
+        }
+        
+        function completeOrder(id) {
+            Swal.fire({
+                title: 'Pesanan Sudah Diterima?',
+                text: "Pastikan barang sudah sampai dengan baik sebelum menyelesaikan pesanan.",
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#10B981',
+                cancelButtonColor: '#6B7280',
+                confirmButtonText: 'Ya, Terima Pesanan',
+                cancelButtonText: 'Belum'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = 'orders.php';
+                    
+                    const actionInput = document.createElement('input');
+                    actionInput.type = 'hidden';
+                    actionInput.name = 'action';
+                    actionInput.value = 'complete_order';
+                    
+                    const idInput = document.createElement('input');
+                    idInput.type = 'hidden';
+                    idInput.name = 'transaksi_id';
+                    idInput.value = id;
+                    
+                    form.appendChild(actionInput);
+                    form.appendChild(idInput);
+                    document.body.appendChild(form);
+                    form.submit();
+                }
+            });
         }
         
         function cancelOrder(id) {

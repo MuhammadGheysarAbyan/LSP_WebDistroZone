@@ -463,8 +463,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                             <label>Metode Pembayaran</label>
                             <select name="payment_method" required>
                                 <option value="Transfer BCA">Transfer Bank - BCA</option>
-                                <option value="Transfer BRI">Transfer Bank - BRI</option>
-                                <option value="Transfer BSI">Transfer Bank - BSI</option>
                                 <option value="QRIS">QRIS (GoPay / OVO / Dana)</option>
                             </select>
                         </div>

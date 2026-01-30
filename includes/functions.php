@@ -306,7 +306,7 @@ function generate_code($prefix) {
     }
     
     // Original Logic for TRX and others
-    $date = date('Ymd');
+    $date = date('ymd');   // Changed to 'ymd' to match Desktop (yyMMdd)
     $code_prefix = $prefix . '-' . $date . '-';
     
     // Get the last code for today

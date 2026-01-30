@@ -33,24 +33,8 @@ $stmt->execute([
 ]);
 $summary = $stmt->fetch(PDO::FETCH_ASSOC);
 
-// Get profit summary for this kasir
-$query = "SELECT 
-            SUM(dt.laba) as total_profit,
-            SUM(dt.harga_jual * dt.qty) as total_sales_value,
-            SUM(dt.harga_modal * dt.qty) as total_cost
-          FROM detail_transaksi dt
-          INNER JOIN transaksi t ON dt.transaksi_id = t.id
-          LEFT JOIN payment_proof p ON t.id = p.transaksi_id
-          WHERE DATE(t.tanggal) BETWEEN :start_date AND :end_date
-          AND (t.kasir_id = :kasir_id OR p.verified_by = :kasir_id)
-          AND t.status = 'completed'";
-$stmt = $conn->prepare($query);
-$stmt->execute([
-    'start_date' => $start_date, 
-    'end_date' => $end_date,
-    'kasir_id' => $kasir_id
-]);
-$profit_summary = $stmt->fetch(PDO::FETCH_ASSOC);
+// Kasir tidak bisa melihat profit - data ini hanya untuk admin
+// Query profit dihapus untuk kasir
 
 // Get top selling products for this kasir
         $query = "SELECT 
@@ -58,8 +42,7 @@ $profit_summary = $stmt->fetch(PDO::FETCH_ASSOC);
             km.merek,
             kv.kode_varian as kode_kaos,
             SUM(dt.qty) as total_sold,
-            SUM(dt.subtotal) as total_revenue,
-            SUM(dt.laba) as total_profit
+            SUM(dt.subtotal) as total_revenue
           FROM detail_transaksi dt
           INNER JOIN kaos_varian kv ON dt.kaos_id = kv.id
           INNER JOIN kaos_master km ON kv.kaos_master_id = km.id
@@ -575,29 +558,6 @@ foreach ($daily_sales as $day) {
                     <div class="stat-card-value"><?php echo format_rupiah($summary['total_revenue'] ?? 0); ?></div>
                     <div class="stat-card-subtitle">Including shipping costs</div>
                 </div>
-                
-                <div class="stat-card">
-                    <div class="stat-card-header">
-                        <div>
-                            <div class="stat-card-title">Total Laba</div>
-                        </div>
-                        <div class="stat-card-icon" style="background: rgba(139, 92, 246, 0.1); color: #8B5CF6;">
-                            <i class="fas fa-hand-holding-usd"></i>
-                        </div>
-                    </div>
-                    <div class="stat-card-value"><?php echo format_rupiah($profit_summary['total_profit'] ?? 0); ?></div>
-                    <div class="stat-card-subtitle">
-                        Profit margin: 
-                        <?php 
-                            if ($profit_summary['total_sales_value'] > 0) {
-                                $margin = ($profit_summary['total_profit'] / $profit_summary['total_sales_value']) * 100;
-                                echo number_format($margin, 1) . '%';
-                            } else {
-                                echo '0%';
-                            }
-                        ?>
-                    </div>
-                </div>
             </div>
             
             <!-- Sales Chart -->
@@ -618,13 +578,12 @@ foreach ($daily_sales as $day) {
                             <th>Kode</th>
                             <th>Terjual</th>
                             <th>Revenue</th>
-                            <th>Laba</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if (empty($top_products)): ?>
                             <tr>
-                                <td colspan="5" style="text-align: center; padding: 40px; color: var(--text-light);">
+                                <td colspan="4" style="text-align: center; padding: 40px; color: var(--text-light);">
                                     <i class="fas fa-chart-bar" style="font-size: 48px; margin-bottom: 16px; display: block; opacity: 0.5;"></i>
                                     Tidak ada data penjualan pada periode ini
                                 </td>
@@ -642,17 +601,6 @@ foreach ($daily_sales as $day) {
                                     <div style="font-size: 12px; color: var(--text-light);">pcs</div>
                                 </td>
                                 <td><?php echo format_rupiah($product['total_revenue']); ?></td>
-                                <td>
-                                    <div style="font-weight: 600; color: #10B981;"><?php echo format_rupiah($product['total_profit']); ?></div>
-                                    <div style="font-size: 12px; color: var(--text-light);">
-                                        <?php 
-                                            if ($product['total_revenue'] > 0) {
-                                                $margin = ($product['total_profit'] / $product['total_revenue']) * 100;
-                                                echo number_format($margin, 1) . '% margin';
-                                            }
-                                        ?>
-                                    </div>
-                                </td>
                             </tr>
                             <?php endforeach; ?>
                         <?php endif; ?>

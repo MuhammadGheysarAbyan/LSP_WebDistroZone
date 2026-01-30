@@ -3,6 +3,11 @@
 
 function check_auth($required_role = null) {
     if (!isset($_SESSION['user_id'])) {
+        // Store intended URL for redirect after login
+        $intended_url = $_SERVER['REQUEST_URI'];
+        if ($required_role === 'customer' && $intended_url) {
+            $_SESSION['intended_url'] = $intended_url;
+        }
         header("Location: ../auth/login.php");
         exit();
     }

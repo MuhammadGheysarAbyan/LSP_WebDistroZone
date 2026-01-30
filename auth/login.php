@@ -57,7 +57,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         header("Location: ../kasir/index.php");
                         break;
                     case 'customer':
-                        header("Location: ../customer/index.php");
+                        // Redirect to intended URL if available (shopping cart persistence)
+                        if (isset($_SESSION['intended_url']) && !empty($_SESSION['intended_url'])) {
+                            $intended = $_SESSION['intended_url'];
+                            unset($_SESSION['intended_url']);
+                            header("Location: " . $intended);
+                        } else {
+                            header("Location: ../customer/index.php");
+                        }
                         break;
                     default:
                         $error = "Role tidak valid!";
