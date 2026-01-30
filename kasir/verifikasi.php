@@ -9,42 +9,16 @@ check_kasir();
 $db = new Database();
 $conn = $db->getConnection();
 
-// Auto-cancel orders pending for more than 24 hours without verification
-$check_auto_cancel = "SELECT id FROM transaksi 
-                      WHERE status = 'pending' 
-                      AND created_at < DATE_SUB(NOW(), INTERVAL 24 HOUR)";
-$res_auto_cancel = $conn->query($check_auto_cancel);
-$orders_to_cancel = $res_auto_cancel->fetchAll(PDO::FETCH_ASSOC);
+$kasir_id = $_SESSION['user_id'];
 
-foreach ($orders_to_cancel as $trx_cancel) {
-    $conn->beginTransaction();
-    try {
-        $tid = $trx_cancel['id'];
-        
-        // Return stock
-        $sql_items = "SELECT kaos_id, qty FROM detail_transaksi WHERE transaksi_id = :id";
-        $stmt_items = $conn->prepare($sql_items);
-        $stmt_items->execute(['id' => $tid]);
-        $items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
-        
-        foreach ($items as $item) {
-            $sql_stock = "UPDATE kaos_varian SET stok = stok + :qty WHERE id = :id";
-            $stmt_stock = $conn->prepare($sql_stock);
-            $stmt_stock->execute(['qty' => $item['qty'], 'id' => $item['kaos_id']]);
-        }
-        
-        // Set status to cancelled
-        $sql_upd = "UPDATE transaksi SET status = 'cancelled', 
-                    cancelled_by = 'system', 
-                    cancel_reason = 'Batal otomatis (melebihi 24 jam)' 
-                    WHERE id = :id";
-        $stmt_upd = $conn->prepare($sql_upd);
-        $stmt_upd->execute(['id' => $tid]);
-        
-        $conn->commit();
-    } catch (Exception $e) {
-        $conn->rollBack();
-    }
+// Helper function to get transaction details
+function get_transaksi_detail($conn, $id) {
+    $stmt = $conn->prepare("SELECT t.*, u.nama as customer_name, u.email, u.no_hp 
+                           FROM transaksi t 
+                           LEFT JOIN users u ON t.customer_id = u.id 
+                           WHERE t.id = :id");
+    $stmt->execute(['id' => $id]);
+    return $stmt->fetch(PDO::FETCH_ASSOC);
 }
 
 // Handle verification actions
@@ -54,25 +28,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $transaksi_id = $_POST['transaksi_id'] ?? '';
     
     if ($action === 'verify') {
-        $sql = "UPDATE payment_proof SET status = 'verified', 
-                verified_by = :verified_by, verified_at = NOW() 
-                WHERE id = :id";
-        $stmt = $conn->prepare($sql);
-        $stmt->execute([
-            'verified_by' => $_SESSION['user_id'],
-            'id' => $payment_id
-        ]);
+        // 1. Get transaction ID
+        $stmt_get = $conn->prepare("SELECT p.transaksi_id, t.kode_transaksi 
+                                    FROM payment_proof p 
+                                    LEFT JOIN transaksi t ON p.transaksi_id = t.id
+                                    WHERE p.id = :id");
+        $stmt_get->execute(['id' => $payment_id]);
+        $proof = $stmt_get->fetch(PDO::FETCH_ASSOC);
         
-        // Also update transaction status
-        $sql = "UPDATE transaksi t
-                JOIN payment_proof p ON t.id = p.transaksi_id
-                SET t.status = 'verified'
-                WHERE p.id = :id";
-        $stmt = $conn->prepare($sql);
-        $stmt->execute(['id' => $payment_id]);
-        
-        header('Location: verifikasi.php?success=Pembayaran berhasil diverifikasi');
-        exit;
+        if ($proof) {
+            $trx_id = $proof['transaksi_id'];
+            
+            $conn->beginTransaction();
+            try {
+                // 2. Update Payment Proof to verified
+                $sql_proof = "UPDATE payment_proof 
+                              SET status = 'verified', 
+                                  verified_by = :verified_by, 
+                                  verified_at = NOW() 
+                              WHERE id = :id";
+                $stmt_proof = $conn->prepare($sql_proof);
+                $stmt_proof->execute([
+                    'verified_by' => $kasir_id,
+                    'id' => $payment_id
+                ]);
+                
+                // 3. Update Transaction to COMPLETED
+                // Standard status for successful transaction
+                $sql_trx = "UPDATE transaksi 
+                            SET status = 'completed', 
+                                kasir_id = :kasir_id, 
+                                cancelled_by = NULL, 
+                                cancel_reason = NULL 
+                            WHERE id = :id";
+                $stmt_trx = $conn->prepare($sql_trx);
+                $stmt_trx->execute([
+                    'kasir_id' => $kasir_id,
+                    'id' => $trx_id
+                ]);
+                
+                $conn->commit();
+                
+                header('Location: verifikasi.php?success=Pembayaran diverifikasi! Transaksi ' . $proof['kode_transaksi'] . ' status COMPLETED.');
+                exit;
+            } catch (Exception $e) {
+                $conn->rollBack();
+                header('Location: verifikasi.php?error=Error: ' . $e->getMessage());
+                exit;
+            }
+        } else {
+            header('Location: verifikasi.php?error=Bukti pembayaran tidak ditemukan');
+            exit;
+        }
     }
     elseif ($action === 'reject') {
         // Delete the rejected payment proof so customer can upload again
@@ -678,6 +685,13 @@ $cancelled_orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 <div class="alert alert-success">
                     <i class="fas fa-check-circle"></i>
                     <?php echo htmlspecialchars($_GET['success']); ?>
+                </div>
+            <?php endif; ?>
+            
+            <?php if (isset($_GET['error'])): ?>
+                <div class="alert" style="background: #FEE2E2; color: #DC2626; border: 1px solid #FECACA;">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <?php echo htmlspecialchars($_GET['error']); ?>
                 </div>
             <?php endif; ?>
             

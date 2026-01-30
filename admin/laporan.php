@@ -27,7 +27,7 @@ $kasir_list = $stmt_kasir->fetchAll(PDO::FETCH_ASSOC);
 $date_filter = "WHERE DATE(t.created_at) BETWEEN '$start_date' AND '$end_date'";
 
 // Status filter - include valid completed transactions
-$date_filter .= " AND t.status IN ('verified', 'completed', 'paid', 'sent')";
+$date_filter .= " AND t.status IN ('verified', 'completed', 'paid', 'sent', 'selesai')";
 
 // Platform filter logic
 if ($platform != 'all') {

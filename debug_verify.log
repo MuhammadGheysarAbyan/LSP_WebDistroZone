@@ -1,0 +1,45 @@
+2026-01-30 04:17:03 - VERIFY ACTION STARTED
+payment_id: 13
+user_id: 12
+Proof data: Array
+(
+    [transaksi_id] => 11
+    [trx_status] => pending
+    [kode_transaksi] => TRX-20260130-011
+)
+
+Starting update for trx_id: 11, current_status: pending
+Payment proof updated: 1 rows
+Transaction updated: 1 rows
+COMMIT SUCCESS!
+
+2026-01-30 04:19:45 - VERIFY ACTION STARTED
+payment_id: 14
+user_id: 12
+Proof data: Array
+(
+    [transaksi_id] => 12
+    [trx_status] => pending
+    [kode_transaksi] => TRX-20260130-012
+)
+
+Starting update for trx_id: 12, current_status: pending
+Payment proof updated: 1 rows
+Transaction updated: 1 rows
+COMMIT SUCCESS!
+
+2026-01-30 04:24:42 - VERIFY ACTION STARTED
+payment_id: 15
+user_id: 12
+Proof data: Array
+(
+    [transaksi_id] => 13
+    [trx_status] => pending
+    [kode_transaksi] => TRX-20260130-013
+)
+
+Starting update for trx_id: 13, current_status: pending
+Payment proof updated: 1 rows
+Transaction updated: 1 rows
+COMMIT SUCCESS!
+

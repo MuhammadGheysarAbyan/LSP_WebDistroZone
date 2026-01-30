@@ -16,17 +16,21 @@ $today = date('Y-m-d');
 $stats = [];
 
 // Today's Revenue
-$query = "SELECT SUM(grand_total) as total FROM transaksi 
-          WHERE DATE(tanggal) = :today AND kasir_id = :kasir_id 
-          AND status IN ('completed', 'verified')";
+$query = "SELECT SUM(t.grand_total) as total FROM transaksi t
+          LEFT JOIN payment_proof p ON t.id = p.transaksi_id
+          WHERE DATE(t.tanggal) = :today 
+          AND (t.kasir_id = :kasir_id OR p.verified_by = :kasir_id)
+          AND t.status IN ('completed', 'verified', 'selesai', 'paid', 'sent')";
 $stmt = $conn->prepare($query);
 $stmt->execute(['today' => $today, 'kasir_id' => $kasir_id]);
 $stats['today_revenue'] = $stmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0;
 
 // Today's Transactions
-$query = "SELECT COUNT(*) as total FROM transaksi 
-          WHERE DATE(tanggal) = :today AND kasir_id = :kasir_id 
-          AND status IN ('completed', 'verified')";
+$query = "SELECT COUNT(*) as total FROM transaksi t
+          LEFT JOIN payment_proof p ON t.id = p.transaksi_id
+          WHERE DATE(t.tanggal) = :today 
+          AND (t.kasir_id = :kasir_id OR p.verified_by = :kasir_id)
+          AND t.status IN ('completed', 'verified', 'selesai', 'paid', 'sent')";
 $stmt = $conn->prepare($query);
 $stmt->execute(['today' => $today, 'kasir_id' => $kasir_id]);
 $stats['today_transactions'] = $stmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0;
@@ -34,15 +38,19 @@ $stats['today_transactions'] = $stmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0;
 // Today's Profit
 $query = "SELECT SUM(dt.laba) as total FROM detail_transaksi dt
           INNER JOIN transaksi t ON dt.transaksi_id = t.id
-          WHERE DATE(t.tanggal) = :today AND t.kasir_id = :kasir_id 
-          AND t.status IN ('completed', 'verified')";
+          LEFT JOIN payment_proof p ON t.id = p.transaksi_id
+          WHERE DATE(t.tanggal) = :today 
+          AND (t.kasir_id = :kasir_id OR p.verified_by = :kasir_id)
+          AND t.status IN ('completed', 'verified', 'selesai', 'paid', 'sent')";
 $stmt = $conn->prepare($query);
 $stmt->execute(['today' => $today, 'kasir_id' => $kasir_id]);
 $stats['today_profit'] = $stmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0;
 
 // Total Transactions (All Time)
-$query = "SELECT COUNT(*) as total FROM transaksi 
-          WHERE kasir_id = :kasir_id AND status IN ('completed', 'verified')";
+$query = "SELECT COUNT(*) as total FROM transaksi t
+          LEFT JOIN payment_proof p ON t.id = p.transaksi_id
+          WHERE (t.kasir_id = :kasir_id OR p.verified_by = :kasir_id)
+          AND t.status IN ('completed', 'verified', 'selesai', 'paid', 'sent')";
 $stmt = $conn->prepare($query);
 $stmt->execute(['kasir_id' => $kasir_id]);
 $stats['total_transactions'] = $stmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0;
@@ -51,7 +59,8 @@ $stats['total_transactions'] = $stmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0;
 $query = "SELECT t.*, u.nama as customer_name 
           FROM transaksi t 
           LEFT JOIN users u ON t.customer_id = u.id 
-          WHERE t.kasir_id = :kasir_id 
+          LEFT JOIN payment_proof p ON t.id = p.transaksi_id
+          WHERE (t.kasir_id = :kasir_id OR p.verified_by = :kasir_id)
           ORDER BY t.created_at DESC LIMIT 10";
 $stmt = $conn->prepare($query);
 $stmt->execute(['kasir_id' => $kasir_id]);
@@ -545,12 +554,14 @@ $recent_transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     <td><?php echo date('d/m/Y', strtotime($trx['tanggal'])); ?></td>
                                     <td style="font-weight: 600;"><?php echo format_rupiah($trx['grand_total']); ?></td>
                                     <td>
-                                        <?php if($trx['status'] == 'completed' || $trx['status'] == 'verified'): ?>
+                                        <?php if($trx['status'] == 'completed'): ?>
                                             <span class="badge badge-success">Selesai</span>
                                         <?php elseif($trx['status'] == 'pending'): ?>
                                             <span class="badge badge-warning">Menunggu</span>
-                                        <?php else: ?>
+                                        <?php elseif($trx['status'] == 'cancelled'): ?>
                                             <span class="badge badge-danger">Dibatalkan</span>
+                                        <?php else: ?>
+                                            <span class="badge badge-warning"><?php echo $trx['status']; ?></span>
                                         <?php endif; ?>
                                     </td>
                                 </tr>

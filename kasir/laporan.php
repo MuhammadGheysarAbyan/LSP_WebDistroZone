@@ -20,11 +20,11 @@ $query = "SELECT
             COUNT(*) as total_transactions,
             SUM(grand_total) as total_revenue,
             SUM(grand_total - shipping_cost) as total_sales
-          FROM transaksi 
-          WHERE DATE(tanggal) BETWEEN :start_date AND :end_date
-          AND kasir_id = :kasir_id
-          AND status IN ('completed', 'verified')
-          AND (platform = 'web' OR platform IS NULL)";
+          FROM transaksi t
+          LEFT JOIN payment_proof p ON t.id = p.transaksi_id
+          WHERE DATE(t.tanggal) BETWEEN :start_date AND :end_date
+          AND (t.kasir_id = :kasir_id OR p.verified_by = :kasir_id)
+          AND t.status IN ('completed', 'verified', 'selesai', 'paid', 'sent')";
 $stmt = $conn->prepare($query);
 $stmt->execute([
     'start_date' => $start_date, 
@@ -40,9 +40,10 @@ $query = "SELECT
             SUM(dt.harga_modal * dt.qty) as total_cost
           FROM detail_transaksi dt
           INNER JOIN transaksi t ON dt.transaksi_id = t.id
+          LEFT JOIN payment_proof p ON t.id = p.transaksi_id
           WHERE DATE(t.tanggal) BETWEEN :start_date AND :end_date
-          AND t.kasir_id = :kasir_id
-          AND t.status IN ('completed', 'verified')";
+          AND (t.kasir_id = :kasir_id OR p.verified_by = :kasir_id)
+          AND t.status = 'completed'";
 $stmt = $conn->prepare($query);
 $stmt->execute([
     'start_date' => $start_date, 
@@ -63,9 +64,10 @@ $profit_summary = $stmt->fetch(PDO::FETCH_ASSOC);
           INNER JOIN kaos_varian kv ON dt.kaos_id = kv.id
           INNER JOIN kaos_master km ON kv.kaos_master_id = km.id
           INNER JOIN transaksi t ON dt.transaksi_id = t.id
+          LEFT JOIN payment_proof p ON t.id = p.transaksi_id
           WHERE DATE(t.tanggal) BETWEEN :start_date AND :end_date
-          AND t.kasir_id = :kasir_id
-          AND t.status IN ('completed', 'verified')
+          AND (t.kasir_id = :kasir_id OR p.verified_by = :kasir_id)
+          AND t.status = 'completed'
           GROUP BY km.id
           ORDER BY total_sold DESC
           LIMIT 10";
@@ -82,10 +84,11 @@ $query = "SELECT
             DATE(tanggal) as date,
             COUNT(*) as transactions,
             SUM(grand_total) as revenue
-          FROM transaksi
-          WHERE DATE(tanggal) BETWEEN :start_date AND :end_date
-          AND kasir_id = :kasir_id
-          AND status IN ('completed', 'verified')
+          FROM transaksi t
+          LEFT JOIN payment_proof p ON t.id = p.transaksi_id
+          WHERE DATE(t.tanggal) BETWEEN :start_date AND :end_date
+          AND (t.kasir_id = :kasir_id OR p.verified_by = :kasir_id)
+          AND t.status = 'completed'
           GROUP BY DATE(tanggal)
           ORDER BY date";
 $stmt = $conn->prepare($query);

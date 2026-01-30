@@ -62,12 +62,13 @@ $this_month = date('Y-m');
 // Today's performance
 $query = "SELECT 
             COUNT(*) as transactions_today,
-            SUM(grand_total) as revenue_today,
-            AVG(grand_total) as avg_transaction_today
-          FROM transaksi 
-          WHERE DATE(tanggal) = :today 
-          AND kasir_id = :kasir_id
-          AND status IN ('completed', 'verified')";
+            SUM(t.grand_total) as revenue_today,
+            AVG(t.grand_total) as avg_transaction_today
+          FROM transaksi t
+          LEFT JOIN payment_proof p ON t.id = p.transaksi_id
+          WHERE DATE(t.tanggal) = :today 
+          AND (t.kasir_id = :kasir_id OR p.verified_by = :kasir_id)
+          AND t.status IN ('completed', 'verified', 'selesai', 'paid', 'sent')";
 $stmt = $conn->prepare($query);
 $stmt->execute(['today' => $today, 'kasir_id' => $kasir_id]);
 $today_stats = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -75,25 +76,27 @@ $today_stats = $stmt->fetch(PDO::FETCH_ASSOC);
 // This month's performance
 $query = "SELECT 
             COUNT(*) as transactions_month,
-            SUM(grand_total) as revenue_month,
-            AVG(grand_total) as avg_transaction_month
-          FROM transaksi 
-          WHERE DATE_FORMAT(tanggal, '%Y-%m') = :month
-          AND kasir_id = :kasir_id
-          AND status IN ('completed', 'verified')";
+            SUM(t.grand_total) as revenue_month,
+            AVG(t.grand_total) as avg_transaction_month
+          FROM transaksi t
+          LEFT JOIN payment_proof p ON t.id = p.transaksi_id
+          WHERE DATE_FORMAT(t.tanggal, '%Y-%m') = :month
+          AND (t.kasir_id = :kasir_id OR p.verified_by = :kasir_id)
+          AND t.status IN ('completed', 'verified', 'selesai', 'paid', 'sent')";
 $stmt = $conn->prepare($query);
 $stmt->execute(['month' => $this_month, 'kasir_id' => $kasir_id]);
 $month_stats = $stmt->fetch(PDO::FETCH_ASSOC);
 
 // Best selling day
 $query = "SELECT 
-            DATE(tanggal) as best_day,
+            DATE(t.tanggal) as best_day,
             COUNT(*) as transaction_count,
-            SUM(grand_total) as revenue
-          FROM transaksi 
-          WHERE kasir_id = :kasir_id
-          AND status IN ('completed', 'verified')
-          GROUP BY DATE(tanggal)
+            SUM(t.grand_total) as revenue
+          FROM transaksi t
+          LEFT JOIN payment_proof p ON t.id = p.transaksi_id
+          WHERE (t.kasir_id = :kasir_id OR p.verified_by = :kasir_id)
+          AND t.status IN ('completed', 'verified', 'selesai', 'paid', 'sent')
+          GROUP BY DATE(t.tanggal)
           ORDER BY revenue DESC
           LIMIT 1";
 $stmt = $conn->prepare($query);

@@ -43,7 +43,8 @@ $recent_all = [];
 $query = "SELECT t.*, u.nama as customer_name 
           FROM transaksi t
           LEFT JOIN users u ON t.customer_id = u.id
-          WHERE t.kasir_id = :kasir_id 
+          LEFT JOIN payment_proof p ON t.id = p.transaksi_id
+          WHERE (t.kasir_id = :kasir_id OR p.verified_by = :kasir_id)
           ORDER BY t.created_at DESC";
 $stmt = $conn->prepare($query);
 $stmt->execute(['kasir_id' => $_SESSION['user_id']]);
@@ -558,9 +559,15 @@ $recent_all = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     <td style="padding: 12px;"><?php echo format_rupiah($r['grand_total']); ?></td>
                                     <td style="padding: 12px;"><span style="text-transform: uppercase; font-size: 11px; font-weight: 600;"><?php echo $r['payment_method']; ?></span></td>
                                     <td style="padding: 12px;">
-                                        <span class="badge <?php echo ($r['status'] === 'completed' || $r['status'] === 'verified') ? 'badge-success' : 'badge-warning'; ?>">
-                                            <?php echo $r['status']; ?>
-                                        </span>
+                                        <?php if($r['status'] == 'completed'): ?>
+                                            <span class="badge badge-success">Selesai</span>
+                                        <?php elseif($r['status'] == 'pending'): ?>
+                                            <span class="badge badge-warning">Menunggu</span>
+                                        <?php elseif($r['status'] == 'cancelled'): ?>
+                                            <span class="badge badge-danger">Dibatalkan</span>
+                                        <?php else: ?>
+                                            <span class="badge badge-warning"><?php echo $r['status']; ?></span>
+                                        <?php endif; ?>
                                     </td>
                                     <td style="padding: 12px; text-align: center;">
                                         <a href="?action=receipt&id=<?php echo $r['id']; ?>" class="btn btn-outline" style="padding: 4px 8px;">
