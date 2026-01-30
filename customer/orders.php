@@ -517,7 +517,7 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <span class="detail-label">Tujuan Pengiriman</span>
                                 <span class="detail-value"><?php echo htmlspecialchars($order['shipping_city']); ?></span>
                             </div>
-                            <?php if(isset($order['estimasi'])): ?>
+                            <?php if(isset($order['estimasi']) && $order['status'] != 'cancelled'): ?>
                             <div class="detail-row">
                                 <span class="detail-label">Estimasi Tiba</span>
                                 <span class="detail-value" style="color: var(--primary);"><i class="fas fa-truck"></i> <?php echo htmlspecialchars($order['estimasi']); ?></span>

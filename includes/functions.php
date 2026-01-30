@@ -281,13 +281,36 @@ function get_pagination_links($current_page, $total_pages, $url, $max_links = 5)
     return $links;
 }
 // Generate Code (User Code / Transaction Code)
+// Generate Code (User Code / Transaction Code)
 function generate_code($prefix) {
     global $conn;
+
+    // Handle Karyawan/Admin codes (Format: KSR0001 / ADM0001) - Match with Desktop App
+    if (in_array($prefix, ['KSR', 'ADM'])) {
+        // Collect all used numbers
+        $stmt_ids = $conn->prepare("SELECT CAST(SUBSTRING(user_code, 4) AS UNSIGNED) as num FROM users WHERE user_code LIKE :prefix ORDER BY num ASC");
+        $stmt_ids->execute(['prefix' => $prefix . '%']);
+        $existing_nums = $stmt_ids->fetchAll(PDO::FETCH_COLUMN);
+
+        $new_num = 1;
+        foreach ($existing_nums as $num) {
+            if ($num == $new_num) {
+                $new_num++;
+            } else {
+                break; // Gap found
+            }
+        }
+        
+        // Ensure max 4 digits (9999), though we iterate.
+        return $prefix . str_pad($new_num, 4, '0', STR_PAD_LEFT);
+    }
+    
+    // Original Logic for TRX and others
     $date = date('Ymd');
     $code_prefix = $prefix . '-' . $date . '-';
     
     // Get the last code for today
-    if (in_array($prefix, ['USR', 'KSR', 'CST'])) {
+    if (in_array($prefix, ['USR', 'CST'])) {
         $query = "SELECT MAX(CAST(SUBSTRING_INDEX(user_code, '-', -1) AS UNSIGNED)) as last_num 
                   FROM users WHERE user_code LIKE :pattern";
     } elseif ($prefix === 'TRX') {

@@ -229,32 +229,170 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['payment_proof'])) {
                 <div class="amount"><?php echo format_rupiah($transaction['grand_total']); ?></div>
                 
                 <div class="bank-info">
+                    <?php 
+                    // Fetch QRIS from settings
+                    $qris_image = 'assets/images/default-qris.png'; // Default
+                    try {
+                        $stmt_qris = $conn->prepare("SELECT setting_value FROM settings WHERE setting_key = 'payment_qris_image'");
+                        $stmt_qris->execute();
+                        $res_qris = $stmt_qris->fetch(PDO::FETCH_ASSOC);
+                        if ($res_qris && !empty($res_qris['setting_value'])) {
+                            $qris_path = $res_qris['setting_value'];
+                            // Validate path
+                            if (file_exists("../" . $qris_path)) {
+                                $qris_image = $qris_path;
+                            }
+                        }
+                    } catch(Exception $e) {}
+
+                    // Calculate Timeout
+                    // Assuming 'created_at' exists or combining tanggal & waktu
+                    $trx_time = isset($transaction['created_at']) ? $transaction['created_at'] : ($transaction['tanggal'] . ' ' . $transaction['waktu']);
+                    $deadline = date('Y-m-d H:i:s', strtotime($trx_time . ' +24 hours'));
+                    ?>
+                    
+                    <!-- Countdown Timer -->
+                    <div style="text-align: center; margin-bottom: 20px; padding: 15px; background: #FFF7ED; border: 1px solid #FFEDD5; border-radius: 12px; color: #C2410C;">
+                        <i class="fas fa-clock" style="margin-right: 5px;"></i> Batas Pembayaran:
+                        <div id="countdown" style="font-size: 24px; font-weight: 800; margin-top: 5px;">--:--:--</div>
+                        <small style="color: #9A3412;">sebelum <?php echo date('d M Y H:i', strtotime($deadline)); ?></small>
+                    </div>
+
+                    <script>
+                        // Set the date we're counting down to
+                        var countDownDate = new Date("<?php echo $deadline; ?>").getTime();
+
+                        // Update the count down every 1 second
+                        var x = setInterval(function() {
+                            var now = new Date().getTime();
+                            var distance = countDownDate - now;
+
+                            var hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                            var minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+                            var seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+                            // Format Time
+                            hours = hours < 10 ? "0" + hours : hours;
+                            minutes = minutes < 10 ? "0" + minutes : minutes;
+                            seconds = seconds < 10 ? "0" + seconds : seconds;
+
+                            document.getElementById("countdown").innerHTML = hours + ":" + minutes + ":" + seconds;
+
+                            if (distance < 0) {
+                                clearInterval(x);
+                                document.getElementById("countdown").innerHTML = "EXPIRED";
+                            }
+                        }, 1000);
+                    </script>
+
                     <?php if ($transaction['payment_method'] === 'QRIS'): ?>
                         <h4>Scan QRIS untuk Membayar:</h4>
                         <div style="text-align: center; margin: 20px 0;">
-                            <div style="width: 200px; height: 200px; background: #EEE; border: 2px solid #DDD; border-radius: 12px; margin: 0 auto; display: flex; align-items: center; justify-content: center; flex-direction: column;">
-                                <i class="fas fa-qrcode" style="font-size: 80px; color: #333; margin-bottom: 10px;"></i>
-                                <span style="font-weight: 700; color: var(--primary);">QRIS DISTROZONE</span>
+                            <div style="width: 250px; padding: 10px; background: #fff; border: 2px solid #DDD; border-radius: 12px; margin: 0 auto;">
+                                <img src="../<?php echo $qris_image; ?>" alt="QRIS Code" style="width: 100%; height: auto; display: block;">
                             </div>
                             <p style="font-size: 12px; color: #64748B; margin-top: 10px;">Gunakan GoPay, OVO, Dana, atau Mobile Banking</p>
                         </div>
                     <?php elseif ($transaction['payment_method'] === 'Transfer BCA'): ?>
-                        <h4>Transfer ke Rekening BCA:</h4>
-                        <div class="bank-detail">
-                            <span><i class="fas fa-university"></i> BCA</span>
-                            <strong>123-456-7890 a/n DistroZone</strong>
+                        <div style="background: white; border: 1px solid #E2E8F0; border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-top: 20px;">
+                            <div style="display: flex; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #F1F5F9; padding-bottom: 15px;">
+                                <div style="width: 60px; height: 30px; background: #005E9C; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-style: italic; margin-right: 15px;">BCA</div>
+                                <div>
+                                    <h4 style="margin: 0; font-size: 16px; font-weight: 700; color: #1E293B;">BCA Virtual Account</h4>
+                                    <span style="font-size: 12px; color: #64748B;">Dicek Otomatis</span>
+                                </div>
+                            </div>
+                            
+                            <div style="background: #F8FAFC; padding: 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #E2E8F0;">
+                                <div>
+                                    <div style="font-size: 13px; color: #64748B; margin-bottom: 8px;">Nomor Virtual Account</div>
+                                    <div style="font-size: 22px; font-weight: 700; color: #1E293B; letter-spacing: 1px; font-family: monospace;">12345 081234567890</div>
+                                </div>
+                                <button onclick="copyToClipboard('12345081234567890')" style="background: white; border: 1px solid #CBD5E1; color: #475569; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 8px; transition: all 0.2s;">
+                                    <i class="far fa-copy"></i> Salin
+                                </button>
+                            </div>
+
+                            <div style="margin-top: 20px; background: #FFF7ED; padding: 12px; border-radius: 8px; border: 1px solid #FFEDD5; display: flex; gap: 10px;">
+                                <i class="fas fa-info-circle" style="color: #EA580C; margin-top: 3px;"></i>
+                                <div style="font-size: 13px; color: #9A3412; line-height: 1.5;">
+                                    Pesanan akan terverifikasi otomatis setelah pembayaran berhasil. Pastikan nominal transfer sesuai hingga 3 digit terakhir.
+                                </div>
+                            </div>
                         </div>
+
+                        <script>
+                        function copyToClipboard(text) {
+                            navigator.clipboard.writeText(text).then(function() {
+                                const btn = event.currentTarget;
+                                const originalText = btn.innerHTML;
+                                btn.innerHTML = '<i class="fas fa-check"></i> Disalin';
+                                btn.style.background = '#ECFDF5';
+                                btn.style.color = '#059669';
+                                btn.style.borderColor = '#10B981';
+                                setTimeout(() => {
+                                    btn.innerHTML = originalText;
+                                    btn.style.background = 'white';
+                                    btn.style.color = '#475569';
+                                    btn.style.borderColor = '#CBD5E1';
+                                }, 2000);
+                            });
+                        }
+                        </script>
                     <?php elseif ($transaction['payment_method'] === 'Transfer BRI'): ?>
-                         <h4>Transfer ke Rekening BRI:</h4>
-                        <div class="bank-detail">
-                            <span><i class="fas fa-university"></i> BRI</span>
-                            <strong>002-999-8888 a/n DistroZone</strong>
+                        <div style="background: white; border: 1px solid #E2E8F0; border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-top: 20px;">
+                            <div style="display: flex; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #F1F5F9; padding-bottom: 15px;">
+                                <div style="width: 60px; height: 30px; background: #005E9C; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-style: italic; margin-right: 15px;">BRI</div>
+                                <div>
+                                    <h4 style="margin: 0; font-size: 16px; font-weight: 700; color: #1E293B;">BRI Virtual Account</h4>
+                                    <span style="font-size: 12px; color: #64748B;">Dicek Otomatis</span>
+                                </div>
+                            </div>
+                            
+                            <div style="background: #F8FAFC; padding: 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #E2E8F0;">
+                                <div>
+                                    <div style="font-size: 13px; color: #64748B; margin-bottom: 8px;">Nomor Virtual Account</div>
+                                    <div style="font-size: 22px; font-weight: 700; color: #1E293B; letter-spacing: 1px; font-family: monospace;">88888 0029998888</div>
+                                </div>
+                                <button onclick="copyToClipboard('888880029998888')" style="background: white; border: 1px solid #CBD5E1; color: #475569; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 8px; transition: all 0.2s;">
+                                    <i class="far fa-copy"></i> Salin
+                                </button>
+                            </div>
+
+                            <div style="margin-top: 20px; background: #FFF7ED; padding: 12px; border-radius: 8px; border: 1px solid #FFEDD5; display: flex; gap: 10px;">
+                                <i class="fas fa-info-circle" style="color: #EA580C; margin-top: 3px;"></i>
+                                <div style="font-size: 13px; color: #9A3412; line-height: 1.5;">
+                                    Pesanan akan terverifikasi otomatis setelah pembayaran berhasil.
+                                </div>
+                            </div>
                         </div>
+
                     <?php elseif ($transaction['payment_method'] === 'Transfer BSI'): ?>
-                         <h4>Transfer ke Rekening BSI:</h4>
-                        <div class="bank-detail">
-                            <span><i class="fas fa-university"></i> BSI</span>
-                            <strong>777-666-5555 a/n DistroZone</strong>
+                        <div style="background: white; border: 1px solid #E2E8F0; border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-top: 20px;">
+                            <div style="display: flex; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #F1F5F9; padding-bottom: 15px;">
+                                <div style="width: 60px; height: 30px; background: #00A39D; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-style: italic; margin-right: 15px;">BSI</div>
+                                <div>
+                                    <h4 style="margin: 0; font-size: 16px; font-weight: 700; color: #1E293B;">BSI Virtual Account</h4>
+                                    <span style="font-size: 12px; color: #64748B;">Dicek Otomatis</span>
+                                </div>
+                            </div>
+                            
+                            <div style="background: #F8FAFC; padding: 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #E2E8F0;">
+                                <div>
+                                    <div style="font-size: 13px; color: #64748B; margin-bottom: 8px;">Nomor Virtual Account</div>
+                                    <div style="font-size: 22px; font-weight: 700; color: #1E293B; letter-spacing: 1px; font-family: monospace;">90000 7776665555</div>
+                                </div>
+                                <button onclick="copyToClipboard('900007776665555')" style="background: white; border: 1px solid #CBD5E1; color: #475569; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 8px; transition: all 0.2s;">
+                                    <i class="far fa-copy"></i> Salin
+                                </button>
+                            </div>
+
+                            <div style="margin-top: 20px; background: #FFF7ED; padding: 12px; border-radius: 8px; border: 1px solid #FFEDD5; display: flex; gap: 10px;">
+                                <i class="fas fa-info-circle" style="color: #EA580C; margin-top: 3px;"></i>
+                                <div style="font-size: 13px; color: #9A3412; line-height: 1.5;">
+                                    Pesanan akan terverifikasi otomatis setelah pembayaran berhasil.
+                                </div>
+                            </div>
                         </div>
                      <?php else: ?>
                         <!-- Fallback / Legacy -->

@@ -35,7 +35,7 @@ function generateKodeVarian($conn, $master_id) {
     $stmt = $conn->prepare("SELECT COUNT(*) as cnt FROM kaos_varian WHERE kaos_master_id = :mid");
     $stmt->execute(['mid' => $master_id]);
     $count = $stmt->fetch(PDO::FETCH_ASSOC)['cnt'] + 1;
-    return 'KV-' . str_pad($master_id, 3, '0', STR_PAD_LEFT) . '-' . str_pad($count, 2, '0', STR_PAD_LEFT);
+    return 'KV-' . str_pad($master_id, 4, '0', STR_PAD_LEFT) . '-' . str_pad($count, 2, '0', STR_PAD_LEFT);
 }
 
 // Handle actions
@@ -58,11 +58,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
+            // Temukan ID yang kosong (gap filling)
+            $stmt_ids = $conn->query("SELECT id FROM kaos_master ORDER BY id ASC");
+            $ids = $stmt_ids->fetchAll(PDO::FETCH_COLUMN);
+            $new_id = 1;
+            foreach ($ids as $existing_id) {
+                if ($existing_id == $new_id) {
+                    $new_id++;
+                } else {
+                    break;
+                }
+            }
+            $master_data['id'] = $new_id;
+
             $cols = implode(', ', array_keys($master_data));
             $vals = ':' . implode(', :', array_keys($master_data));
             $stmt = $conn->prepare("INSERT INTO kaos_master ($cols) VALUES ($vals)");
             $stmt->execute($master_data);
-            $master_id = $conn->lastInsertId();
+            $master_id = $new_id;
 
             if (isset($_POST['warna']) && is_array($_POST['warna'])) {
                 foreach ($_POST['warna'] as $i => $warna) {

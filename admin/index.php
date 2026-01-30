@@ -13,19 +13,19 @@ $conn = $db->getConnection();
 $stats = [];
 
 // Total Revenue
-$query = "SELECT SUM(grand_total) as total FROM transaksi WHERE status IN ('completed', 'verified')";
+$query = "SELECT SUM(grand_total) as total FROM transaksi WHERE status IN ('completed', 'verified', 'selesai')";
 $stmt = $conn->query($query);
 $stats['revenue'] = $stmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0;
 
 // Total Profit
 $query = "SELECT SUM(laba) as total FROM detail_transaksi 
           INNER JOIN transaksi ON detail_transaksi.transaksi_id = transaksi.id 
-          WHERE transaksi.status IN ('completed', 'verified')";
+          WHERE transaksi.status IN ('completed', 'verified', 'selesai')";
 $stmt = $conn->query($query);
 $stats['profit'] = $stmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0;
 
 // Total Transactions
-$query = "SELECT COUNT(*) as total FROM transaksi WHERE status IN ('completed', 'verified')";
+$query = "SELECT COUNT(*) as total FROM transaksi WHERE status IN ('completed', 'verified', 'selesai')";
 $stmt = $conn->query($query);
 $stats['transactions'] = $stmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0;
 
@@ -50,7 +50,7 @@ $recent_transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 // Chart Data: Sales per day (Last 7 Days)
 $query = "SELECT DATE(tanggal) as date, SUM(grand_total) as total 
           FROM transaksi 
-          WHERE status IN ('completed', 'verified') 
+          WHERE status IN ('completed', 'verified', 'selesai') 
           AND tanggal >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
           GROUP BY DATE(tanggal)
           ORDER BY DATE(tanggal) ASC";
@@ -71,7 +71,7 @@ $query = "SELECT c.nama_kategori, COUNT(dt.id) as total_sold
           JOIN kaos_master k ON v.kaos_master_id = k.id
           JOIN kategori c ON k.kategori_id = c.id
           JOIN transaksi t ON dt.transaksi_id = t.id
-          WHERE t.status IN ('completed', 'verified')
+          WHERE t.status IN ('completed', 'verified', 'selesai')
           GROUP BY c.id
           ORDER BY total_sold DESC LIMIT 5";
 $stmt = $conn->query($query);
