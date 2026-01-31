@@ -11,6 +11,11 @@ $error = "";
 $username = "";
 $selected_role = "customer"; // default role
 
+// Capture redirect param if present
+if (isset($_GET['redirect']) && !empty($_GET['redirect'])) {
+    $_SESSION['intended_url'] = $_GET['redirect'];
+}
+
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $username = clean_input($_POST['username']);
     $password = $_POST['password'];

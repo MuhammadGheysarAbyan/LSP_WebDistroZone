@@ -655,7 +655,7 @@ if (isset($_SESSION['user_id'])) {
                                 
                                 <div class="product-footer">
                                     <div class="product-price">Mulai <?php echo format_rupiah($product['harga']); ?></div>
-                                    <button onclick='openQuickView(<?php echo json_encode($product); ?>)' class="btn-add-cart" style="text-decoration: none; border: none; cursor: pointer; width: 100%;">
+                                    <button onclick="openQuickView(<?php echo $product['id']; ?>)" class="btn-add-cart" style="text-decoration: none; border: none; cursor: pointer; width: 100%;">
                                         Detail
                                     </button>
                                 </div>
@@ -859,10 +859,36 @@ if (isset($_SESSION['user_id'])) {
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
         const allVariants = <?php echo json_encode($variants_data); ?>;
+        const productsList = <?php echo json_encode($products); ?>;
         let currentProduct = null;
         let selectedVariant = null;
 
-        function formatRupiahJS(number) {
+        // Auto-open modal if present in URL
+        window.onload = function() {
+            const urlParams = new URL(window.location.href).searchParams;
+            const modalId = urlParams.get('open_modal');
+            if (modalId && productsList) {
+                const product = productsList.find(p => p.id == modalId);
+                if (product) {
+                    openQuickView(product);
+                    // Clean URL without refresh
+                    const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + window.location.search.replace(/[\?&]open_modal=[^&]+/, '').replace(/^&/, '?');
+                     window.history.replaceState({}, document.title, newUrl);
+                }
+            }
+            
+            // Existing msg logic
+            const msg = urlParams.get('msg');
+            if (msg === 'account_deleted') {
+                Swal.fire({
+                   title: 'Akun Terhapus',
+                   text: 'Akun Anda telah berhasil dihapus secara permanen. Terima kasih telah berbelanja di DistroZone.',
+                   icon: 'success'
+                });
+            }
+        };
+
+        function formatRupiah(number) {
             return new Intl.NumberFormat('id-ID', {
                 style: 'currency',
                 currency: 'IDR',
@@ -870,7 +896,14 @@ if (isset($_SESSION['user_id'])) {
             }).format(number);
         }
 
-        function openQuickView(product) {
+        function openQuickView(input) {
+            // Support passing ID or Object
+            const product = (typeof input === 'object') ? input : productsList.find(p => p.id == input);
+            if (!product) {
+                console.error("Product not found for ID:", input);
+                return;
+            }
+
             currentProduct = product;
             const modal = document.getElementById('quickViewModal');
             const variants = allVariants[product.id];
@@ -940,7 +973,7 @@ if (isset($_SESSION['user_id'])) {
                 img.style.opacity = '1';
             }, 300);
             
-            document.getElementById('modalPrice').innerText = formatRupiahJS(variant.harga);
+            document.getElementById('modalPrice').innerText = formatRupiah(variant.harga);
             document.getElementById('stockValue').innerText = variant.stok;
         }
 
@@ -962,7 +995,11 @@ if (isset($_SESSION['user_id'])) {
                     }
                 }).then((result) => {
                     if (result.isConfirmed) {
-                        window.location.href = '../auth/login.php';
+                        const currentUrl = new URL(window.location.href);
+                        if (currentProduct) {
+                            currentUrl.searchParams.set('open_modal', currentProduct.id);
+                        }
+                        window.location.href = '../auth/login.php?redirect=' + encodeURIComponent(currentUrl.toString());
                     }
                 });
                 return;
@@ -999,7 +1036,11 @@ if (isset($_SESSION['user_id'])) {
                     }
                 }).then((result) => {
                     if (result.isConfirmed) {
-                        window.location.href = '../auth/login.php';
+                        const currentUrl = new URL(window.location.href);
+                        if (currentProduct) {
+                            currentUrl.searchParams.set('open_modal', currentProduct.id);
+                        }
+                        window.location.href = '../auth/login.php?redirect=' + encodeURIComponent(currentUrl.toString());
                     }
                 });
                 return;

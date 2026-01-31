@@ -40,7 +40,7 @@ $stmt = $conn->query($query);
 $stats['pending'] = $stmt->fetch(PDO::FETCH_ASSOC)['total'] ?? 0;
 
 // Recent transactions
-$query = "SELECT t.*, u.nama as customer_name 
+$query = "SELECT t.*, u.nama as user_name, t.nama_pelanggan 
           FROM transaksi t 
           LEFT JOIN users u ON t.customer_id = u.id 
           ORDER BY t.created_at DESC LIMIT 10";
@@ -525,7 +525,17 @@ foreach ($top_categories as $cat) {
                                         <span class="badge" style="background: #F3F4F6; color: #6B7280;"><i class="fas fa-desktop"></i> Desktop</span>
                                     <?php endif; ?>
                                 </td>
-                                <td><?php echo $trx['customer_name'] ?? 'Guest'; ?></td>
+                                <td>
+                                    <?php 
+                                        if (!empty($trx['nama_pelanggan'])) {
+                                            echo htmlspecialchars($trx['nama_pelanggan']);
+                                        } elseif (!empty($trx['user_name'])) {
+                                            echo htmlspecialchars($trx['user_name']);
+                                        } else {
+                                            echo 'Guest';
+                                        }
+                                    ?>
+                                </td>
                                 <td><?php echo format_datetime($trx['created_at']); ?></td>
                                 <td><?php echo format_rupiah($trx['grand_total']); ?></td>
                                 <td>

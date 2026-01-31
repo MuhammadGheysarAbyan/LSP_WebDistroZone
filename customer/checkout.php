@@ -62,14 +62,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         try {
             // Create transaction - platform = 'web' untuk transaksi online
             $kode_transaksi = generate_code('TRX');
-            $query_trx = "INSERT INTO transaksi (kode_transaksi, customer_id, total, shipping_city, shipping_address,
+            
+            // Get customer name for consistency
+            $stmt_cust = $conn->prepare("SELECT nama FROM users WHERE id = :id");
+            $stmt_cust->execute([':id' => $_SESSION['user_id']]);
+            $cust_data = $stmt_cust->fetch(PDO::FETCH_ASSOC);
+            $nama_pelanggan = $cust_data['nama'] ?? 'Web Customer';
+
+            $query_trx = "INSERT INTO transaksi (kode_transaksi, customer_id, nama_pelanggan, total, shipping_city, shipping_address,
                           shipping_cost, grand_total, tanggal, payment_method, status, platform, waktu, created_at) 
-                          VALUES (:kode, :customer, :total, :city, :address, :shipping, :grand, CURDATE(), :payment, 'pending', 'web', NOW(), NOW())";
+                          VALUES (:kode, :customer, :nama, :total, :city, :address, :shipping, :grand, CURDATE(), :payment, 'pending', 'web', NOW(), NOW())";
             
             $stmt_trx = $conn->prepare($query_trx);
             $stmt_trx->execute([
                 ':kode' => $kode_transaksi,
                 ':customer' => $_SESSION['user_id'],
+                ':nama' => $nama_pelanggan,
                 ':total' => $subtotal,
                 ':city' => $shipping_city,
                 ':address' => $shipping_address,

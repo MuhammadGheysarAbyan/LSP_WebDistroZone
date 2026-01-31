@@ -9,6 +9,10 @@ check_customer();
 $db = new Database();
 $conn = $db->getConnection();
 
+// Auto-complete orders sent > 2 days ago
+$auto_sql = "UPDATE transaksi SET status = 'completed' WHERE status = 'sent' AND updated_at < DATE_SUB(NOW(), INTERVAL 2 DAY)";
+$conn->query($auto_sql);
+
 // Handle POST actions
 if (isset($_POST['action'])) {
     $transaksi_id = $_POST['transaksi_id'];

@@ -14,6 +14,11 @@ $query = "SELECT * FROM kategori ORDER BY nama_kategori";
 $stmt = $conn->query($query);
 $kategories = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Get brands for suggestions
+$query_brands = "SELECT DISTINCT merek FROM kaos_master WHERE merek IS NOT NULL AND merek != '' ORDER BY merek";
+$stmt_brands = $conn->query($query_brands);
+$brands = $stmt_brands->fetchAll(PDO::FETCH_COLUMN);
+
 $action = $_GET['action'] ?? '';
 $id = $_GET['id'] ?? '';
 $search = $_GET['search'] ?? '';
@@ -79,9 +84,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if (isset($_POST['warna']) && is_array($_POST['warna'])) {
                 foreach ($_POST['warna'] as $i => $warna) {
-                    $posted_sizes = $_POST['sizes'][$i] ?? [];
-                    
-                    // Handle Photo for this color group
+                    $size = $_POST['sizes'][$i] ?? '';
+                    if (empty($size)) continue;
+
+                    // Handle Photo
                     $photo_path = null;
                     if (isset($_FILES['foto_varian']['name'][$i]) && $_FILES['foto_varian']['error'][$i] === UPLOAD_ERR_OK) {
                         $v_file = [
@@ -97,24 +103,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                     }
 
-                    foreach ($posted_sizes as $size) {
-                        $v_data = [
-                            'kaos_master_id' => $master_id,
-                            'kode_varian' => generateKodeVarian($conn, $master_id),
-                            'warna' => $warna,
-                            'warna_hex' => $_POST['warna_hex'][$i] ?? '#000000',
-                            'size' => $size,
-                            'harga' => $_POST['harga'][$i] ?? 0,
-                            'harga_pokok' => $_POST['harga_pokok'][$i] ?? 0,
-                            'stok' => $_POST['stok'][$i] ?? 0
-                        ];
-                        if ($photo_path) $v_data['foto_varian'] = $photo_path;
+                    // If no photo uploaded for this row, try to find a photo from other rows with same color
+                    // (Simple logic: if this is empty, maybe user uploaded it in another row for same color? 
+                    //  For now, let's keep it explicit: User must upload or we leave it null/default)
+                    
+                    $v_data = [
+                        'kaos_master_id' => $master_id,
+                        'kode_varian' => generateKodeVarian($conn, $master_id),
+                        'warna' => $warna,
+                        'warna_hex' => $_POST['warna_hex'][$i] ?? '#000000',
+                        'size' => $size,
+                        'harga' => $_POST['harga'][$i] ?? 0,
+                        'harga_pokok' => $_POST['harga_pokok'][$i] ?? 0,
+                        'stok' => $_POST['stok'][$i] ?? 0
+                    ];
+                    if ($photo_path) $v_data['foto_varian'] = $photo_path;
 
-                        $v_cols = implode(', ', array_keys($v_data));
-                        $v_vals = ':' . implode(', :', array_keys($v_data));
-                        $stmt_v = $conn->prepare("INSERT INTO kaos_varian ($v_cols) VALUES ($v_vals)");
-                        $stmt_v->execute($v_data);
-                    }
+                    $v_cols = implode(', ', array_keys($v_data));
+                    $v_vals = ':' . implode(', :', array_keys($v_data));
+                    $stmt_v = $conn->prepare("INSERT INTO kaos_varian ($v_cols) VALUES ($v_vals)");
+                    $stmt_v->execute($v_data);
                 }
             }
             $conn->commit();
@@ -147,9 +155,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $processed_variant_ids = [];
 
                 foreach ($_POST['warna'] as $i => $warna) {
-                    $posted_sizes = $_POST['sizes'][$i] ?? [];
+                    $size = $_POST['sizes'][$i] ?? '';
+                    if (empty($size)) continue;
                     
-                    // Handle Photo for this color group
+                    // Handle Photo
                     $photo_path = null;
                     if (isset($_FILES['foto_varian']['name'][$i]) && $_FILES['foto_varian']['error'][$i] === UPLOAD_ERR_OK) {
                         $v_file = [
@@ -165,47 +174,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                     }
 
-                    foreach ($posted_sizes as $size) {
-                        // Check if this variant already exists
-                        $check_stmt = $conn->prepare("SELECT id FROM kaos_varian WHERE kaos_master_id = :mid AND warna = :warna AND size = :size");
-                        $check_stmt->execute(['mid' => $id, 'warna' => $warna, 'size' => $size]);
-                        $existing_id = $check_stmt->fetchColumn();
+                    // Check if we are updating an existing variant (by ID if hidden input exists, OR by logical key?)
+                    // The UI for Edit likely populates hidden inputs for ID? No, the previous code checked logical key (master + color + size).
+                    // Since we are now allowing explicit rows, we should probably try to match by logical key or just add new if not found.
+                    // Ideally, the form should send the variant ID if editing.
+                    // But looking at the loop, we are iterating POST arrays. 
+                    // Let's stick to the previous logic: Try to find existing by MasterID + Color + Size.
+                    
+                    $check_stmt = $conn->prepare("SELECT id FROM kaos_varian WHERE kaos_master_id = :mid AND warna = :warna AND size = :size");
+                    $check_stmt->execute(['mid' => $id, 'warna' => $warna, 'size' => $size]);
+                    $existing_id = $check_stmt->fetchColumn();
 
-                        if ($existing_id) {
-                            $v_data = [
-                                'harga' => $_POST['harga'][$i] ?? 0,
-                                'harga_pokok' => $_POST['harga_pokok'][$i] ?? 0,
-                                'stok' => $_POST['stok'][$i] ?? 0,
-                                'warna_hex' => $_POST['warna_hex'][$i] ?? '#000000',
-                                'id' => $existing_id
-                            ];
-                            $set_q = "harga = :harga, harga_pokok = :harga_pokok, stok = :stok, warna_hex = :warna_hex";
-                            if ($photo_path) {
-                                $v_data['foto_varian'] = $photo_path;
-                                $set_q .= ", foto_varian = :foto_varian";
-                            }
-                            $upd_stmt = $conn->prepare("UPDATE kaos_varian SET $set_q WHERE id = :id");
-                            $upd_stmt->execute($v_data);
-                            $processed_variant_ids[] = $existing_id;
-                        } else {
-                            $v_data = [
-                                'kaos_master_id' => $id,
-                                'kode_varian' => generateKodeVarian($conn, $id),
-                                'warna' => $warna,
-                                'warna_hex' => $_POST['warna_hex'][$i] ?? '#000000',
-                                'size' => $size,
-                                'harga' => $_POST['harga'][$i] ?? 0,
-                                'harga_pokok' => $_POST['harga_pokok'][$i] ?? 0,
-                                'stok' => $_POST['stok'][$i] ?? 0
-                            ];
-                            if ($photo_path) $v_data['foto_varian'] = $photo_path;
-
-                            $v_cols = implode(', ', array_keys($v_data));
-                            $v_vals = ':' . implode(', :', array_keys($v_data));
-                            $stmt_v = $conn->prepare("INSERT INTO kaos_varian ($v_cols) VALUES ($v_vals)");
-                            $stmt_v->execute($v_data);
-                            $processed_variant_ids[] = $conn->lastInsertId();
+                    if ($existing_id) {
+                        $v_data = [
+                            'harga' => $_POST['harga'][$i] ?? 0,
+                            'harga_pokok' => $_POST['harga_pokok'][$i] ?? 0,
+                            'stok' => $_POST['stok'][$i] ?? 0,
+                            'warna_hex' => $_POST['warna_hex'][$i] ?? '#000000',
+                            'id' => $existing_id
+                        ];
+                        $set_q = "harga = :harga, harga_pokok = :harga_pokok, stok = :stok, warna_hex = :warna_hex";
+                        if ($photo_path) {
+                            $v_data['foto_varian'] = $photo_path;
+                            $set_q .= ", foto_varian = :foto_varian";
                         }
+                        $upd_stmt = $conn->prepare("UPDATE kaos_varian SET $set_q WHERE id = :id");
+                        $upd_stmt->execute($v_data);
+                        $processed_variant_ids[] = $existing_id;
+                    } else {
+                        $v_data = [
+                            'kaos_master_id' => $id,
+                            'kode_varian' => generateKodeVarian($conn, $id),
+                            'warna' => $warna,
+                            'warna_hex' => $_POST['warna_hex'][$i] ?? '#000000',
+                            'size' => $size,
+                            'harga' => $_POST['harga'][$i] ?? 0,
+                            'harga_pokok' => $_POST['harga_pokok'][$i] ?? 0,
+                            'stok' => $_POST['stok'][$i] ?? 0
+                        ];
+                        if ($photo_path) $v_data['foto_varian'] = $photo_path;
+
+                        $v_cols = implode(', ', array_keys($v_data));
+                        $v_vals = ':' . implode(', :', array_keys($v_data));
+                        $stmt_v = $conn->prepare("INSERT INTO kaos_varian ($v_cols) VALUES ($v_vals)");
+                        $stmt_v->execute($v_data);
+                        $processed_variant_ids[] = $conn->lastInsertId();
                     }
                 }
 
@@ -281,22 +294,8 @@ if ($id && $action === 'edit') {
     $stmt->execute(['id' => $id]);
     $variants_detail = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Group by color and photo
-    foreach ($variants_detail as $v) {
-        $key = $v['warna'] . '_' . ($v['foto_varian'] ?? '');
-        if (!isset($grouped_variants[$key])) {
-            $grouped_variants[$key] = [
-                'warna' => $v['warna'],
-                'warna_hex' => $v['warna_hex'] ?? '#000000',
-                'harga' => $v['harga'],
-                'harga_pokok' => $v['harga_pokok'],
-                'stok' => $v['stok'],
-                'foto_varian' => $v['foto_varian'],
-                'sizes' => []
-            ];
-        }
-        $grouped_variants[$key]['sizes'][] = $v['size'];
-    }
+    // No grouping needed anymore - strict 1:1 row Edit
+    $grouped_variants = $variants_detail;
 }
 ?>
 
@@ -1063,9 +1062,9 @@ if ($id && $action === 'edit') {
                                         <?php foreach($colors as $c_info): 
                                             $c_name = $c_info['warna'];
                                             $c_hex = $c_info['warna_hex'] ?? '#000000';
-                                            $c_text = getContrastColor($c_hex);
                                         ?>
-                                            <span style="font-size: 11px; background: <?php echo htmlspecialchars($c_hex); ?>; padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.2); color: <?php echo $c_text; ?>; margin-right: 4px; margin-bottom: 4px;">
+                                            <span style="font-size: 11px; background: #F1F5F9; padding: 4px 8px; border-radius: 6px; border: 1px solid #E2E8F0; color: #475569; margin-right: 4px; margin-bottom: 4px; display: inline-flex; align-items: center; gap: 6px;">
+                                                <span style="width: 10px; height: 10px; border-radius: 50%; background: <?php echo htmlspecialchars($c_hex); ?>; display: inline-block; border: 1px solid rgba(0,0,0,0.1);"></span>
                                                 <?php echo htmlspecialchars($c_name); ?>
                                             </span>
                                         <?php endforeach; ?>
@@ -1120,8 +1119,15 @@ if ($id && $action === 'edit') {
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                                 <div class="form-group">
                                     <label for="merek">Merek *</label>
-                                    <input type="text" id="merek" name="merek" class="form-control" 
-                                           value="<?php echo htmlspecialchars($kaos_detail['merek'] ?? ''); ?>" required>
+                                    <input type="text" id="merek" name="merek" class="form-control" list="brandList"
+                                           value="<?php echo htmlspecialchars($kaos_detail['merek'] ?? ''); ?>" required placeholder="Pilih atau ketik baru...">
+                                    <datalist id="brandList">
+                                        <?php if (!empty($brands)): ?>
+                                            <?php foreach ($brands as $br): ?>
+                                                <option value="<?php echo htmlspecialchars($br); ?>">
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </datalist>
                                 </div>
                                 <div class="form-group">
                                     <label for="kategori_id">Kategori *</label>
@@ -1169,7 +1175,7 @@ if ($id && $action === 'edit') {
                                     <thead>
                                         <tr>
                                             <th>Warna</th>
-                                            <th>Ukuran (Checklist)</th>
+                                            <th>Ukuran</th>
                                             <th>Harga Pokok</th>
                                             <th>Harga Jual</th>
                                             <th>Stok</th>
@@ -1190,13 +1196,12 @@ if ($id && $action === 'edit') {
                                                     </div>
                                                 </td>
                                                 <td>
-                                                    <div style="display: flex; flex-wrap: wrap; gap: 8px; max-width: 250px;">
+                                                    <select name="sizes[0]" class="form-control" style="width: 100px;" required>
+                                                        <option value="">Pilih</option>
                                                         <?php foreach($available_sizes as $sz): ?>
-                                                            <label style="font-size: 12px; display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                                                                <input type="checkbox" name="sizes[0][]" value="<?php echo $sz; ?>" <?php echo $sz == 'L' ? 'checked' : ''; ?>> <?php echo $sz; ?>
-                                                            </label>
+                                                            <option value="<?php echo $sz; ?>"><?php echo $sz; ?></option>
                                                         <?php endforeach; ?>
-                                                    </div>
+                                                    </select>
                                                 </td>
                                                 <td>
                                                     <input type="number" name="harga_pokok[0]" class="form-control" placeholder="Harga Pokok" style="width: 120px;" value="0">
@@ -1218,14 +1223,12 @@ if ($id && $action === 'edit') {
                                                     </div>
                                                 </td>
                                                     <td>
-                                                        <div style="display: flex; flex-wrap: wrap; gap: 8px; max-width: 250px;">
+                                                        <select name="sizes[<?php echo $idx; ?>]" class="form-control" style="width: 100px;" required>
+                                                            <option value="">Pilih</option>
                                                             <?php foreach($available_sizes as $sz): ?>
-                                                                <label style="font-size: 12px; display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                                                                    <input type="checkbox" name="sizes[<?php echo $idx; ?>][]" value="<?php echo $sz; ?>" 
-                                                                           <?php echo in_array($sz, $gv['sizes']) ? 'checked' : ''; ?>> <?php echo $sz; ?>
-                                                                </label>
+                                                                <option value="<?php echo $sz; ?>" <?php echo ($sz == $gv['size']) ? 'selected' : ''; ?>><?php echo $sz; ?></option>
                                                             <?php endforeach; ?>
-                                                        </div>
+                                                        </select>
                                                     </td>
                                                     <td><input type="number" name="harga_pokok[<?php echo $idx; ?>]" class="form-control" placeholder="Harga Pokok" value="<?php echo round($gv['harga_pokok']); ?>" style="width: 120px;"></td>
                                                     <td><input type="number" name="harga[<?php echo $idx; ?>]" class="form-control" placeholder="Harga Jual" value="<?php echo round($gv['harga']); ?>" style="font-weight: 700; font-size: 16px; width: 130px; color: var(--primary);"></td>
@@ -1280,15 +1283,14 @@ if ($id && $action === 'edit') {
             row.className = 'variant-row';
             row.setAttribute('data-idx', idx);
             
-            let sizeHtml = '<div style="display: flex; flex-wrap: wrap; gap: 8px; max-width: 250px;">';
+            let sizeHtml = `
+                <select name="sizes[${idx}]" class="form-control" style="width: 100px;" required>
+                    <option value="">Pilih</option>
+            `;
             sizesArr.forEach(sz => {
-                sizeHtml += `
-                    <label style="font-size: 12px; display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                        <input type="checkbox" name="sizes[${idx}][]" value="${sz}" ${sz === 'L' ? 'checked' : ''}> ${sz}
-                    </label>
-                `;
+                sizeHtml += `<option value="${sz}">${sz}</option>`;
             });
-            sizeHtml += '</div>';
+            sizeHtml += `</select>`;
 
             row.innerHTML = `
                 <td>

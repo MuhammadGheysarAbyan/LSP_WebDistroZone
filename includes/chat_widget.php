@@ -288,8 +288,15 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'customer') {
             </div>
             <div class="chat-header-info">
                 <h4>DistroZone Support</h4>
-                <span><i class="fas fa-circle" style="font-size: 7px; color: #34D399;"></i> Online</span>
+                <span id="chatStatus"><i class="fas fa-circle" style="font-size: 7px; color: #34D399;"></i> Online</span>
             </div>
+        </div>
+        
+        <div id="offlineMessage" style="display: none; padding: 15px; background: #FFF7ED; border-bottom: 1px solid #FFEDD5; color: #9A3412; font-size: 13px; text-align: center;">
+            <i class="fas fa-clock" style="margin-bottom: 5px;"></i><br>
+            Maaf, layanan chat kami sedang offline.<br>
+            <strong>Jam Operasional: 09:00 - 21:00</strong><br>
+            Silakan tinggalkan pesan, kami akan membalas saat online.
         </div>
         
         <div class="chat-messages" id="chatMessages">
@@ -337,6 +344,40 @@ document.addEventListener('DOMContentLoaded', function() {
     var attachmentPreview = document.getElementById('attachmentPreview');
     var previewIcon = document.getElementById('previewIcon');
     var previewName = document.getElementById('previewName');
+    
+    // Business Hours Logic
+    function checkBusinessHours() {
+        var now = new Date();
+        var hour = now.getHours();
+        // Set Business Hours: 09:00 - 21:00
+        var startHour = 9;
+        var endHour = 21;
+        var isOnline = hour >= startHour && hour < endHour;
+        
+        var statusEl = document.getElementById('chatStatus');
+        var offlineMsg = document.getElementById('offlineMessage');
+        var inputArea = document.querySelector('.chat-input-area');
+        
+        if (isOnline) {
+            statusEl.innerHTML = '<i class="fas fa-circle" style="font-size: 7px; color: #34D399;"></i> Online';
+            offlineMsg.style.display = 'none';
+            // Enable inputs if previously disabled by offline logic (not by sending)
+            if (!isSending) {
+               // chatInput.disabled = false; // logic handled by isSending
+            }
+        } else {
+            statusEl.innerHTML = '<i class="fas fa-circle" style="font-size: 7px; color: #9CA3AF;"></i> Offline';
+            offlineMsg.style.display = 'block';
+            // Optional: Disable input or just leave it for "leaving a message"
+            // The prompt asks for "professional notification", usually allowing offline messages is better.
+            // But if user wants strictly "notif kasir offline", maybe just warn.
+            // We kept the input enabled so they can leave a message.
+        }
+    }
+    
+    // Check on load and every minute
+    checkBusinessHours();
+    setInterval(checkBusinessHours, 60000);
     
     // File Handler
     chatAttachBtn.onclick = function() { chatFileInput.click(); };
