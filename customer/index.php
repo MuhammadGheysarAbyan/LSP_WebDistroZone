@@ -2,6 +2,7 @@
 require_once '../config/session.php';
 require_once '../config/database.php';
 require_once '../includes/functions.php';
+include_once '../auto_complete_orders.php'; // Trigger auto-complete check
 
 $db = new Database();
 $conn = $db->getConnection();

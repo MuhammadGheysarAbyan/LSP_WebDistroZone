@@ -9,9 +9,8 @@ check_customer();
 $db = new Database();
 $conn = $db->getConnection();
 
-// Auto-complete orders sent > 2 days ago
-$auto_sql = "UPDATE transaksi SET status = 'completed' WHERE status = 'sent' AND updated_at < DATE_SUB(NOW(), INTERVAL 2 DAY)";
-$conn->query($auto_sql);
+// Auto-complete orders logic centralized
+include_once '../auto_complete_orders.php';
 
 // Handle POST actions
 if (isset($_POST['action'])) {
@@ -82,8 +81,8 @@ $query = "SELECT t.*,
           CASE 
             WHEN t.status = 'pending' AND (SELECT COUNT(*) FROM payment_proof pp WHERE pp.transaksi_id = t.id) = 0 THEN 'Menunggu Pembayaran'
             WHEN t.status = 'pending' AND (SELECT COUNT(*) FROM payment_proof pp WHERE pp.transaksi_id = t.id) > 0 THEN 'Menunggu Verifikasi'
-            WHEN t.status = 'verified' THEN 'Pembayaran Berhasil'
-            WHEN t.status = 'sent' THEN 'Dalam Pengiriman - Pesanan Akan Tiba'
+            WHEN t.status = 'verified' THEN 'Terverifikasi - Barang Sedang Menuju Rumah'
+            WHEN t.status = 'sent' THEN 'Dalam Pengiriman - Barang Menuju Rumah'
             WHEN t.status = 'completed' THEN 'Selesai - Pesanan Telah Tiba di Rumah'
             WHEN t.status = 'cancelled' AND t.cancelled_by = 'kasir' THEN 'Ditolak'
             WHEN t.status = 'cancelled' AND t.cancelled_by = 'customer' THEN 'Dibatalkan'
@@ -562,6 +561,19 @@ $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     <i class="fas fa-check-circle"></i> Pesanan telah sampai kerumah
                                 </span>
                             </div>
+                            <?php elseif($order['status'] == 'verified' || $order['status'] == 'sent'): ?>
+                            <div class="detail-row">
+                                <span class="detail-label">Status Pengiriman</span>
+                                <span class="detail-value" style="color: #0369A1; font-weight: 600;">
+                                    <i class="fas fa-truck"></i> Barang sedang menuju rumah Anda
+                                </span>
+                            </div>
+                            <?php if(isset($order['estimasi'])): ?>
+                            <div class="detail-row">
+                                <span class="detail-label">Estimasi Tiba</span>
+                                <span class="detail-value" style="color: var(--primary);"><i class="fas fa-clock"></i> <?php echo htmlspecialchars($order['estimasi']); ?></span>
+                            </div>
+                            <?php endif; ?>
                             <?php elseif(isset($order['estimasi']) && $order['status'] != 'cancelled'): ?>
                             <div class="detail-row">
                                 <span class="detail-label">Estimasi Tiba</span>

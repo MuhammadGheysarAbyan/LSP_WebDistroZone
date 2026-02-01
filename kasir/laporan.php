@@ -89,6 +89,26 @@ foreach ($daily_sales as $day) {
     $chart_labels[] = date('d M', strtotime($day['date']));
     $chart_data[] = $day['revenue'];
 }
+// Get payment method breakdown
+$query = "SELECT 
+            payment_method,
+            COUNT(*) as trx_count,
+            SUM(grand_total) as method_revenue
+          FROM transaksi t
+          LEFT JOIN payment_proof p ON t.id = p.transaksi_id
+          WHERE DATE(t.tanggal) BETWEEN :start_date AND :end_date
+          AND (t.kasir_id = :kasir_id OR p.verified_by = :kasir_id)
+          AND t.status IN ('completed', 'verified', 'selesai', 'paid', 'sent')
+          GROUP BY payment_method
+          ORDER BY method_revenue DESC";
+$stmt = $conn->prepare($query);
+$stmt->execute([
+    'start_date' => $start_date, 
+    'end_date' => $end_date,
+    'kasir_id' => $kasir_id
+]);
+$payment_stats = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
 ?>
 
 <!DOCTYPE html>
@@ -560,6 +580,45 @@ foreach ($daily_sales as $day) {
                 </div>
             </div>
             
+            <!-- Payment Method Stats -->
+            <div class="content-card" style="margin-bottom: 24px;">
+                <h3><i class="fas fa-wallet" style="color: var(--secondary); margin-right: 8px;"></i>Rincian Pembayaran</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                    <?php if(empty($payment_stats)): ?>
+                        <div style="grid-column: 1 / -1; text-align: center; color: var(--text-light); padding: 20px;">
+                            <i class="fas fa-search" style="font-size: 24px; margin-bottom: 8px; opacity: 0.5;"></i><br>
+                            Belum ada data pembayaran
+                        </div>
+                    <?php else: ?>
+                        <?php foreach($payment_stats as $stat): ?>
+                        <div style="background: #F8FAFC; padding: 16px; border-radius: 12px; border: 1px solid #E2E8F0; transition: transform 0.2s; cursor: default;" 
+                             onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='translateY(0)'">
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                                <div style="font-size: 14px; color: var(--text-light); text-transform: uppercase; font-weight: 700;">
+                                    <?php 
+                                        $pm = htmlspecialchars($stat['payment_method'] ?: 'TUNAI'); 
+                                        if (strpos(strtolower($pm), 'qris') !== false) echo '<i class="fas fa-qrcode" style="color: #6366F1; margin-right: 6px;"></i>' . $pm;
+                                        elseif (strpos(strtolower($pm), 'tunai') !== false || strpos(strtolower($pm), 'cash') !== false) echo '<i class="fas fa-money-bill" style="color: #10B981; margin-right: 6px;"></i>' . $pm;
+                                        elseif (strpos(strtolower($pm), 'bca') !== false || strpos(strtolower($pm), 'transfer') !== false) echo '<i class="fas fa-university" style="color: #3B82F6; margin-right: 6px;"></i>' . $pm;
+                                        else echo '<i class="fas fa-credit-card" style="margin-right: 6px;"></i>' . $pm;
+                                    ?>
+                                </div>
+                                <span style="background: rgba(0,0,0,0.05); padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;">
+                                    <?php echo $stat['trx_count']; ?> Trx
+                                </span>
+                            </div>
+                            <div style="font-size: 20px; font-weight: 800; color: var(--text-dark); letter-spacing: -0.5px;">
+                                <?php echo format_rupiah($stat['method_revenue']); ?>
+                            </div>
+                            <div style="margin-top: 8px; height: 4px; background: #E2E8F0; border-radius: 2px; overflow: hidden;">
+                                <div style="height: 100%; width: <?php echo ($stat['method_revenue'] / ($summary['total_revenue'] ?: 1) * 100); ?>%; background: var(--primary); border-radius: 2px;"></div>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+
             <!-- Sales Chart -->
             <div class="content-card">
                 <h3>Grafik Penjualan Harian</h3>

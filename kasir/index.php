@@ -11,6 +11,12 @@ $conn = $db->getConnection();
 
 $kasir_id = $_SESSION['user_id'];
 
+// Auto-complete web orders after estimated delivery days
+// This runs when kasir opens dashboard to ensure consistent status updates
+// Auto-complete web orders after estimated delivery days
+// This runs when kasir opens dashboard to ensure consistent status updates
+include_once '../auto_complete_orders.php';
+
 // Get statistics for today
 $today = date('Y-m-d');
 $stats = [];

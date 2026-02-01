@@ -15,6 +15,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $email = clean_input($_POST['email']);
     $no_telp = clean_input($_POST['no_telp']);
     $alamat = clean_input($_POST['alamat']);
+    $desa = clean_input($_POST['desa'] ?? '');
+    $kecamatan = clean_input($_POST['kecamatan'] ?? '');
+    $kabupaten = clean_input($_POST['kabupaten'] ?? '');
+    $kodepos = clean_input($_POST['kodepos'] ?? '');
     $password = $_POST['password'];
     $confirm_password = $_POST['confirm_password'];
     
@@ -47,9 +51,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 // $hashed_password = password_hash($password, PASSWORD_DEFAULT); // Removed hash
                 
                 try {
-                    $query = "INSERT INTO users (user_code, username, nama, email, no_telp, alamat, 
+                    $query = "INSERT INTO users (user_code, username, nama, email, no_telp, alamat, desa, kecamatan, kabupaten, kodepos, 
                               password, role, status, created_at, updated_at) 
-                              VALUES (:code, :username, :nama, :email, :telp, :alamat, :password, 
+                              VALUES (:code, :username, :nama, :email, :telp, :alamat, :desa, :kecamatan, :kabupaten, :kodepos, :password, 
                               'customer', 'active', NOW(), NOW())";
                     
                     $stmt = $conn->prepare($query);
@@ -60,6 +64,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         ':email' => $email,
                         ':telp' => $no_telp,
                         ':alamat' => $alamat,
+                        ':desa' => $desa,
+                        ':kecamatan' => $kecamatan,
+                        ':kabupaten' => $kabupaten,
+                        ':kodepos' => $kodepos,
                         ':password' => $password
                     ]);
                     
@@ -341,7 +349,25 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 </div>
                 
                 <div class="input-group">
-                    <textarea name="alamat" class="input-field" placeholder="Alamat Lengkap"></textarea>
+                    <textarea name="alamat" class="input-field" placeholder="Alamat (Jl, No. Rumah, RT/RW)" rows="2"></textarea>
+                </div>
+                
+                <div class="form-row">
+                    <div class="input-group">
+                        <input type="text" name="desa" class="input-field" placeholder="Desa/Kelurahan">
+                    </div>
+                    <div class="input-group">
+                        <input type="text" name="kecamatan" class="input-field" placeholder="Kecamatan">
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="input-group">
+                        <input type="text" name="kabupaten" class="input-field" placeholder="Kabupaten/Kota">
+                    </div>
+                    <div class="input-group">
+                        <input type="text" name="kodepos" class="input-field" placeholder="Kode Pos" maxlength="10">
+                    </div>
                 </div>
                 
                 <div class="form-row">

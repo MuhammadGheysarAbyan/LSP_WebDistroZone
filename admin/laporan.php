@@ -9,6 +9,10 @@ check_admin();
 $db = new Database();
 $conn = $db->getConnection();
 
+// Auto-complete web orders after estimated delivery days
+// Auto-complete web orders after estimated delivery days
+include_once '../auto_complete_orders.php';
+
 // Date Filter
 $start_date = $_GET['start_date'] ?? date('Y-m-01');
 $end_date = $_GET['end_date'] ?? date('Y-m-d');

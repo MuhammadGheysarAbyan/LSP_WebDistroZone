@@ -19,6 +19,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
     $email = clean_input($_POST['email']);
     $no_telp = clean_input($_POST['no_telp']);
     $alamat = clean_input($_POST['alamat']);
+    $desa = clean_input($_POST['desa']);
+    $kecamatan = clean_input($_POST['kecamatan']);
+    $kabupaten = clean_input($_POST['kabupaten']);
+    $kodepos = clean_input($_POST['kodepos']);
     
     try {
         // Check if email already exists for another user
@@ -28,13 +32,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
         if ($check_stmt->fetch()) {
             $error_msg = "Email sudah digunakan oleh pengguna lain.";
         } else {
-            $query = "UPDATE users SET nama = :nama, email = :email, no_telp = :no_telp, alamat = :alamat, updated_at = NOW() WHERE id = :id";
+            $query = "UPDATE users SET nama = :nama, email = :email, no_telp = :no_telp, alamat = :alamat, desa = :desa, kecamatan = :kecamatan, kabupaten = :kabupaten, kodepos = :kodepos, updated_at = NOW() WHERE id = :id";
             $stmt = $conn->prepare($query);
             $stmt->execute([
                 'nama' => $nama,
                 'email' => $email,
                 'no_telp' => $no_telp,
                 'alamat' => $alamat,
+                'desa' => $desa,
+                'kecamatan' => $kecamatan,
+                'kabupaten' => $kabupaten,
+                'kodepos' => $kodepos,
                 'id' => $user_id
             ]);
             
@@ -343,8 +351,28 @@ $user = $stmt->fetch(PDO::FETCH_ASSOC);
                     <input type="text" id="no_telp" name="no_telp" class="form-control" value="<?php echo htmlspecialchars($user['no_telp']); ?>" required>
                 </div>
                 <div class="form-group">
-                    <label for="alamat">Alamat Pengiriman Default</label>
-                    <textarea id="alamat" name="alamat" class="form-control" rows="4" placeholder="Contoh: Jl. Merdeka No. 123, Kel. Kebayoran Lama, Jakarta Selatan"><?php echo htmlspecialchars($user['alamat']); ?></textarea>
+                    <label for="alamat">Alamat (Jalan, No. Rumah, RT/RW)</label>
+                    <textarea id="alamat" name="alamat" class="form-control" rows="2" placeholder="Contoh: Jl. Merdeka No. 123, RT 01/RW 02"><?php echo htmlspecialchars($user['alamat'] ?? ''); ?></textarea>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label for="desa">Desa/Kelurahan</label>
+                        <input type="text" id="desa" name="desa" class="form-control" value="<?php echo htmlspecialchars($user['desa'] ?? ''); ?>" placeholder="Contoh: Sukamaju">
+                    </div>
+                    <div class="form-group">
+                        <label for="kecamatan">Kecamatan</label>
+                        <input type="text" id="kecamatan" name="kecamatan" class="form-control" value="<?php echo htmlspecialchars($user['kecamatan'] ?? ''); ?>" placeholder="Contoh: Cilandak">
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label for="kabupaten">Kabupaten/Kota</label>
+                        <input type="text" id="kabupaten" name="kabupaten" class="form-control" value="<?php echo htmlspecialchars($user['kabupaten'] ?? ''); ?>" placeholder="Contoh: Jakarta Selatan">
+                    </div>
+                    <div class="form-group">
+                        <label for="kodepos">Kode Pos</label>
+                        <input type="text" id="kodepos" name="kodepos" class="form-control" value="<?php echo htmlspecialchars($user['kodepos'] ?? ''); ?>" placeholder="12345" maxlength="10">
+                    </div>
                 </div>
                 <button type="submit" name="update_profile" class="btn btn-primary">
                     <i class="fas fa-save"></i> Simpan Perubahan

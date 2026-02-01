@@ -20,10 +20,14 @@ $stmt->execute([':customer_id' => $_SESSION['user_id']]);
 $cart_items = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Get user data for default address
-$stmt_user = $conn->prepare("SELECT alamat FROM users WHERE id = :id");
+$stmt_user = $conn->prepare("SELECT alamat, desa, kecamatan, kabupaten, kodepos FROM users WHERE id = :id");
 $stmt_user->execute([':id' => $_SESSION['user_id']]);
 $user_data = $stmt_user->fetch(PDO::FETCH_ASSOC);
 $default_address = $user_data['alamat'] ?? '';
+$default_desa = $user_data['desa'] ?? '';
+$default_kecamatan = $user_data['kecamatan'] ?? '';
+$default_kabupaten = $user_data['kabupaten'] ?? '';
+$default_kodepos = $user_data['kodepos'] ?? '';
 
 // Calculate subtotal
 $subtotal = 0;
@@ -460,11 +464,30 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         </div>
 
                         <div class="form-group">
-                            <label>Alamat Lengkap (Jl, No. Rumah, Kel/Kec)</label>
-                            <textarea name="shipping_address" id="shipping_address" rows="3" class="form-control" required placeholder="Masukkan alamat lengkap pengiriman..."><?php echo htmlspecialchars($default_address); ?></textarea>
-                            <small style="color: #64748B; font-size: 12px; margin-top: 4px; display: block;">
-                                <i class="fas fa-info-circle"></i> Alamat ini akan digunakan sebagai tujuan pengiriman.
-                            </small>
+                            <label>Alamat (Jl, No. Rumah, RT/RW)</label>
+                            <textarea name="shipping_address" id="shipping_address" rows="2" class="form-control" required placeholder="Contoh: Jl. Merdeka No. 123, RT 01/RW 02"><?php echo htmlspecialchars($default_address); ?></textarea>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                            <div class="form-group">
+                                <label>Desa/Kelurahan</label>
+                                <input type="text" name="shipping_desa" class="form-control" value="<?php echo htmlspecialchars($default_desa); ?>" placeholder="Contoh: Sukamaju">
+                            </div>
+                            <div class="form-group">
+                                <label>Kecamatan</label>
+                                <input type="text" name="shipping_kecamatan" class="form-control" value="<?php echo htmlspecialchars($default_kecamatan); ?>" placeholder="Contoh: Cilandak">
+                            </div>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 16px;">
+                            <div class="form-group">
+                                <label>Kabupaten/Kota</label>
+                                <input type="text" name="shipping_kabupaten" class="form-control" value="<?php echo htmlspecialchars($default_kabupaten); ?>" placeholder="Contoh: Jakarta Selatan">
+                            </div>
+                            <div class="form-group">
+                                <label>Kode Pos</label>
+                                <input type="text" name="shipping_kodepos" class="form-control" value="<?php echo htmlspecialchars($default_kodepos); ?>" placeholder="12345" maxlength="10">
+                            </div>
                         </div>
                         
                         <div class="form-group">

@@ -11,6 +11,10 @@ $conn = $db->getConnection();
 
 $kasir_id = $_SESSION['user_id'];
 
+// Auto-complete web orders after estimated delivery days
+// Auto-complete web orders after estimated delivery days
+include_once '../auto_complete_orders.php';
+
 // Helper function to get transaction details
 function get_transaksi_detail($conn, $id) {
     $stmt = $conn->prepare("SELECT t.*, u.nama as customer_name, u.email, u.no_hp 
@@ -53,8 +57,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'id' => $payment_id
                 ]);
                 
-                // 3. Update Transaction to COMPLETED
-                // Standard status for successful transaction
+                // 3. Update Transaction to COMPLETED (Immediate complete)
+                // Status 'completed' means verified and finished directly
                 $sql_trx = "UPDATE transaksi 
                             SET status = 'completed', 
                                 kasir_id = :kasir_id, 
@@ -69,7 +73,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 $conn->commit();
                 
-                header('Location: verifikasi.php?success=Pembayaran diverifikasi! Transaksi ' . $proof['kode_transaksi'] . ' status COMPLETED.');
+                header('Location: verifikasi.php?success=Pembayaran diverifikasi! Transaksi ' . $proof['kode_transaksi'] . ' - Status Selesai.');
                 exit;
             } catch (Exception $e) {
                 $conn->rollBack();
